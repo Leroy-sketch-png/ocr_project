@@ -19,7 +19,7 @@ A fully offline, OCR-based financial data extraction pipeline relying on Tessera
    - Make sure the executable is available on `PATH`, or set `TESSERACT_CMD` to the full executable path.
    - Optional example:
      ```powershell
-     $env:TESSERACT_CMD = "C:\Program Files\Tesseract-OCR\tesseract.exe"
+     $env:TESSERACT_CMD = "<full-path-to-tesseract.exe>"
      ```
 
 2. Install the Python dependencies.
@@ -27,12 +27,17 @@ A fully offline, OCR-based financial data extraction pipeline relying on Tessera
    .\setup.ps1
    ```
 
-3. Verify the environment.
+3. Optionally point `TESSERACT_CMD` at your local executable.
+   ```powershell
+   $env:TESSERACT_CMD = "<full-path-to-tesseract.exe>"
+   ```
+
+4. Verify the environment.
    ```powershell
    python -m src.main --check-env
    ```
 
-4. Run the pipeline.
+5. Run the pipeline.
    ```powershell
    .\run.ps1 -Path .\AA_SAMPLE1.pdf -Optimize
    ```
@@ -53,7 +58,7 @@ Available flags:
 
 ## Runtime Notes
 
-- Tesseract is resolved in this order: `TESSERACT_CMD`, `tesseract` on `PATH`, then common Windows install locations such as `%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe`.
+- Tesseract is resolved in this order: `TESSERACT_CMD`, `tesseract` on `PATH`, then common Windows install locations.
 - If Tesseract or PaddleOCR is missing, the program returns a structured JSON error with a remediation hint instead of a traceback.
 - `--check-env` confirms local prerequisites before execution.
 - The repair engine applies accounting identities such as `Total Assets = Total Liabilities + Total Equity`.
