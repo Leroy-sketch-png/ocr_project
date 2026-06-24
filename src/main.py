@@ -18,7 +18,7 @@ def process_file(
     try:
         doc = load_document(path)
     except Exception as e:
-        return {"file": path, "error": str(e), "fields": {}}
+        return {"error": str(e)}
 
     ocr_engine = get_ocr_engine(engine_name)
 
@@ -28,7 +28,7 @@ def process_file(
         all_tokens.extend(page_tokens)
 
     if is_ocr_failure(all_tokens):
-        return {"file": path, "error": "OCR extraction failed", "fields": {}}
+        return {"error": "OCR extraction failed"}
 
     blocks = build_text_blocks(all_tokens)
     table_rows = build_table_rows(blocks)
@@ -47,10 +47,10 @@ def process_file(
     validation_result = validate_fields(field_values, required_fields)
 
     output: Dict[str, Any] = {
-        "file": path,
-        "fields": {name: field_value_to_dict(fv) for name, fv in field_values.items()},
+        name: field_value_to_dict(fv) for name, fv in field_values.items()
     }
-    output.update(validation_result)
+    if "error" in validation_result:
+        output["error"] = validation_result["error"]
     return output
 
 

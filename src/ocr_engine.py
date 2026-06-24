@@ -4,6 +4,7 @@ import pytesseract  # type: ignore
 from pytesseract import Output  # type: ignore
 
 from .models import Token
+from .image_processor import preprocess_image
 
 pytesseract.pytesseract.tesseract_cmd = (
     r"C:\Users\c-leroy.phan\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
@@ -23,7 +24,8 @@ class TesseractEngine(OCREngine):
     """Tesseract implementation of OCREngine."""
 
     def recognize_page(self, pil_image: Any, page: int) -> List[Token]:
-        data = pytesseract.image_to_data(pil_image, output_type=Output.DICT)
+        processed_image = preprocess_image(pil_image)
+        data = pytesseract.image_to_data(processed_image, output_type=Output.DICT)
         tokens = []
         n = len(data["text"])
         for i in range(n):

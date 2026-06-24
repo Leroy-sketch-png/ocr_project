@@ -33,8 +33,8 @@ def load_document(file_path: str) -> Document:
         try:
             with pdfplumber.open(file_path) as pdf:
                 for idx, page in enumerate(pdf.pages, start=1):
-                    # resolution=100 to avoid memory exhaustion and hanging in tesseract
-                    img = page.to_image(resolution=100).original
+                    # resolution=300 to provide Tesseract with high enough DPI to not hallucinate characters
+                    img = page.to_image(resolution=300).original
                     pages.append((idx, img))
         except Exception as e:
             raise InvalidInputError(f"Failed to read PDF: {e}")

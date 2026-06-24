@@ -4,7 +4,7 @@ from typing import List
 from .models import TableRow, TextBlock, Token
 
 
-def build_text_blocks(tokens: List[Token], y_threshold: int = 15) -> List[TextBlock]:
+def build_text_blocks(tokens: List[Token], y_threshold: int = 12) -> List[TextBlock]:
     """
     Cluster tokens into lines based on vertical proximity.
     """
@@ -53,15 +53,26 @@ def build_table_rows(text_blocks: List[TextBlock]) -> List[TableRow]:
         desc_tokens = []
         numeric_groups = []
         current_group = []
+        current_line_tokens_sorted = []
 
         for t in tokens:
             if is_numeric_token(t.text):
+                if current_group:
+                    prev_t = current_line_tokens_sorted[-1]
+                    # Check X-gap. With 300 DPI, gaps are 3x larger. Use 24 pixels.
+                    gap = t.bbox[0] - prev_t.bbox[2]
+                    if gap > 24:
+                        numeric_groups.append(current_group)
+                        current_group = []
                 current_group.append(t)
+                current_line_tokens_sorted.append(t)
             else:
                 if current_group:
                     numeric_groups.append(current_group)
                     current_group = []
                 desc_tokens.append(t)
+                current_line_tokens_sorted.append(t)
+
         if current_group:
             numeric_groups.append(current_group)
 

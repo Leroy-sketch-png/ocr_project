@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
+from thefuzz import fuzz
 
 from .models import FieldValue, TableRow, TextBlock, Token
 
@@ -45,13 +46,36 @@ def extract_fields(
             if field_name == "Auditor’s Opinion":
                 continue  # Handled separately
 
-            if any(kw.lower() in desc_lower for kw in keywords):
-                if field_name not in results:
-                    tokens_for_field = row.cell_tokens[0] if row.cell_tokens else []
-                    results[field_name] = FieldValue(
+            if any(fuzz.ratio(kw.lower(), desc_lower) >= 82 for kw in keywords):
+                best_cell_idx = 0
+                for idx, cell_text in enumerate(row.cells):
+                    clean_text = cell_text.replace(",", "").replace(".", "").replace(" ", "").strip()
+                    if idx == 0 and clean_text.isdigit() and len(clean_text) <= 2:
+                        continue
+                    best_cell_idx = idx
+                    break
+                
+                tokens_for_field = row.cell_tokens[best_cell_idx] if row.cell_tokens else []
+                raw_text = row.cells[best_cell_idx] if row.cells else None
+                
+                # To compare, we need to parse the value
+                from .value_parser import parse_numeric
+                val = parse_numeric(raw_text)
+                
+                # If we already have a result, only overwrite it if the new parsed value is larger (absolute).
+                # This prevents picking a 0.0 or empty value from a Cash Flow statement when the Balance Sheet has the real value.
+                if field_name in results:
+                    existing_val = parse_numeric(results[field_name].raw_text)
+                    if existing_val is not None and val is not None:
+                        if abs(val) <= abs(existing_val):
+                            continue
+                    elif existing_val is not None and val is None:
+                        continue
+                
+                results[field_name] = FieldValue(
                         name=field_name,
                         value=None,  # To be parsed later
-                        raw_text=row.cells[0] if row.cells else None,
+                        raw_text=row.cells[best_cell_idx] if row.cells else None,
                         page=row.page,
                         tokens=tokens_for_field,
                         bbox=compute_bbox(tokens_for_field),
