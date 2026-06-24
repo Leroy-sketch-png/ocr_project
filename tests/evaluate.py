@@ -31,7 +31,7 @@ def compare_values(extracted, expected) -> bool:
         return str(extracted) == str(expected)
 
 
-def evaluate(extreme_mode=False):
+def evaluate(engine_name="tesseract", extreme_mode=False, mode_name=None):
     samples = [
         {
             "pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE1.pdf",
@@ -51,7 +51,12 @@ def evaluate(extreme_mode=False):
     total_extracted = 0
     total_correct = 0
 
-    mode_name = "EXTREME" if extreme_mode else "CLEAN"
+    if mode_name is None:
+        if engine_name.lower() in ("paddle", "train"):
+            mode_name = "TRAIN"
+        else:
+            mode_name = "EXTREME" if extreme_mode else "CLEAN"
+
     print(f"\n[{mode_name} MODE]")
 
     for sample in samples:
@@ -71,7 +76,12 @@ def evaluate(extreme_mode=False):
                 "src",
                 "field_config.yaml",
             )
-            result = process_file(pdf_path, config_path, extreme_mode=extreme_mode)
+            result = process_file(
+                pdf_path,
+                config_path,
+                engine_name=engine_name,
+                extreme_mode=extreme_mode,
+            )
         except Exception as e:
             print(f"Pipeline crashed on {pdf_path}: {e}")
             continue
@@ -116,5 +126,6 @@ def evaluate(extreme_mode=False):
 
 
 if __name__ == "__main__":
-    evaluate(extreme_mode=False)
-    evaluate(extreme_mode=True)
+    evaluate(engine_name="tesseract", extreme_mode=False, mode_name="CLEAN")
+    evaluate(engine_name="tesseract", extreme_mode=True, mode_name="EXTREME")
+    evaluate(engine_name="paddle", extreme_mode=False, mode_name="TRAIN")
