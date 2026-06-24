@@ -63,7 +63,7 @@ def validate_runtime(engine_name: str = "tesseract") -> None:
 
 def inspect_runtime(engine_name: str = "tesseract") -> Dict[str, Any]:
     """
-    Collect a friendly runtime readiness report for CLI diagnostics.
+    Collect a clear runtime readiness report for CLI diagnostics.
     """
     report: Dict[str, Any] = {
         "ok": True,
