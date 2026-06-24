@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
+
 def preprocess_image(pil_image: Image.Image) -> Image.Image:
     """
     Apply OpenCV preprocessing nitro-boost to an image before feeding to Tesseract.
@@ -10,13 +11,13 @@ def preprocess_image(pil_image: Image.Image) -> Image.Image:
     """
     # Convert PIL Image to OpenCV format
     open_cv_image = np.array(pil_image)
-    
+
     # Handle Grayscale images vs RGB
     if len(open_cv_image.shape) == 3 and open_cv_image.shape[2] == 3:
-        open_cv_image = open_cv_image[:, :, ::-1].copy() # RGB to BGR
+        open_cv_image = open_cv_image[:, :, ::-1].copy()  # RGB to BGR
         gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
     elif len(open_cv_image.shape) == 3 and open_cv_image.shape[2] == 4:
-        open_cv_image = open_cv_image[:, :, :3][:, :, ::-1].copy() # RGBA to BGR
+        open_cv_image = open_cv_image[:, :, :3][:, :, ::-1].copy()  # RGBA to BGR
         gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
     else:
         gray = open_cv_image

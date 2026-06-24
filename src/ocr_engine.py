@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import Any, List
+
 import pytesseract  # type: ignore
 from pytesseract import Output  # type: ignore
 
-from .models import Token
 from .image_processor import preprocess_image
+from .models import Token
 
 pytesseract.pytesseract.tesseract_cmd = (
     r"C:\Users\c-leroy.phan\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"

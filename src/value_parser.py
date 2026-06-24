@@ -5,9 +5,11 @@ from .models import FieldValue
 
 
 def parse_numeric(raw: Optional[str]) -> Optional[float]:
-    if not raw: return None
+    if not raw:
+        return None
     s = raw.strip()
-    if s in ("", "None", "-"): return 0.0 if s == "-" else None
+    if s in ("", "None", "-"):
+        return 0.0 if s == "-" else None
 
     negative = False
     if s.startswith("(") and s.endswith(")"):
@@ -17,17 +19,18 @@ def parse_numeric(raw: Optional[str]) -> Optional[float]:
     # Replace dots and commas that act as thousands separators
     # A dot or comma followed by exactly 3 digits is a thousands separator
     s = re.sub(r"[.,](?=\d{3}(?!\d))", "", s)
-    
+
     # Remove all spaces (since table_builder separates columns now)
     s = s.replace(" ", "")
-    
+
     # Strip any trailing commas or dots
     s = s.rstrip(".,")
 
     # Extract the first float pattern
     match = re.search(r"-?\d+(?:\.\d+)?", s)
-    if not match: return None
-    
+    if not match:
+        return None
+
     try:
         val = float(match.group(0))
         return -val if negative else val

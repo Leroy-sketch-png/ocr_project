@@ -1,7 +1,8 @@
 import os
 from typing import List, Tuple
-from PIL import Image
+
 import pdfplumber
+from PIL import Image
 
 from .models import Document
 

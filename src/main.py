@@ -5,17 +5,20 @@ from typing import Any, Dict, List
 
 from .exporter import field_value_to_dict
 from .field_extractor import extract_fields, load_field_config
+from .image_processor import preprocess_image
 from .io_loader import load_document
 from .ocr_engine import get_ocr_engine
+from .repair_engine import apply_math_repairs
 from .table_builder import build_table_rows, build_text_blocks
 from .validator import is_ocr_failure, validate_fields
 from .value_parser import parse_numeric_fields
-from .repair_engine import apply_math_repairs
-from .image_processor import preprocess_image
 
 
 def process_file(
-    path: str, config_path: str, engine_name: str = "tesseract", extreme_mode: bool = False
+    path: str,
+    config_path: str,
+    engine_name: str = "tesseract",
+    extreme_mode: bool = False,
 ) -> Dict[str, Any]:
     try:
         doc = load_document(path)
@@ -48,8 +51,12 @@ def process_file(
 
     # V6: Apply Mathematical Repair Engine (Math constraints + Targeted OCR)
     # We pass the original preprocessed images to the repair engine for targeted cell OCR.
-    processed_images = {page_idx: preprocess_image(pil_img) for page_idx, pil_img in doc.pages}
-    field_values = apply_math_repairs(field_values, processed_images, all_tokens, extreme_mode=extreme_mode)
+    processed_images = {
+        page_idx: preprocess_image(pil_img) for page_idx, pil_img in doc.pages
+    }
+    field_values = apply_math_repairs(
+        field_values, processed_images, all_tokens, extreme_mode=extreme_mode
+    )
 
     validation_result = validate_fields(field_values, required_fields)
 
@@ -69,7 +76,9 @@ def main() -> None:
         default=os.path.join(os.path.dirname(__file__), "field_config.yaml"),
     )
     parser.add_argument("--engine", default="tesseract")
-    parser.add_argument("--extreme", action="store_true", help="Enable Combinatorial Inverse Search")
+    parser.add_argument(
+        "--extreme", action="store_true", help="Enable Combinatorial Inverse Search"
+    )
 
     args = parser.parse_args()
 
