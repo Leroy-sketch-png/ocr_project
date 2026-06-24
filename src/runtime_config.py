@@ -152,12 +152,10 @@ def inspect_runtime(engine_name: str = "tesseract") -> Dict[str, Any]:
         }
 
     if report["ok"]:
-        report["summary"] = (
-            "Environment looks ready for the selected OCR engine."
-        )
+        report["summary"] = "Environment is ready for the selected OCR engine."
     else:
         report["summary"] = (
-            "Environment needs a small setup step before the OCR pipeline can run."
+            "Environment requires configuration before the OCR pipeline can run."
         )
 
     return report

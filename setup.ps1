@@ -13,7 +13,7 @@ if (-not (Test-Path ".venv")) {
 
 Write-Host ""
 Write-Host "Python dependencies are ready."
-Write-Host "Next, make sure Tesseract OCR is installed and available on PATH, or set TESSERACT_CMD."
+Write-Host "Ensure Tesseract OCR is installed and available on PATH, or set TESSERACT_CMD."
 Write-Host "You can verify the environment with:"
 Write-Host "  .\.venv\Scripts\python.exe -m src.main --check-env"
 Write-Host "Or process a document with:"
