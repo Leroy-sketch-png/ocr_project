@@ -31,7 +31,7 @@ def compare_values(extracted, expected) -> bool:
         return str(extracted) == str(expected)
 
 
-def evaluate(engine_name="tesseract", extreme_mode=False, mode_name=None):
+def evaluate(engine_name="tesseract", optimization_mode=False, mode_name=None):
     samples = [
         {
             "pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE1.pdf",
@@ -52,10 +52,10 @@ def evaluate(engine_name="tesseract", extreme_mode=False, mode_name=None):
     total_correct = 0
 
     if mode_name is None:
-        if engine_name.lower() in ("paddle", "train"):
-            mode_name = "TRAIN"
+        if engine_name.lower() in ("paddle", "neural", "train"):
+            mode_name = "NEURAL"
         else:
-            mode_name = "EXTREME" if extreme_mode else "CLEAN"
+            mode_name = "OPTIMIZED" if optimization_mode else "STANDARD"
 
     print(f"\n[{mode_name} MODE]")
 
@@ -80,7 +80,7 @@ def evaluate(engine_name="tesseract", extreme_mode=False, mode_name=None):
                 pdf_path,
                 config_path,
                 engine_name=engine_name,
-                extreme_mode=extreme_mode,
+                optimization_mode=optimization_mode,
             )
         except Exception as e:
             print(f"Pipeline crashed on {pdf_path}: {e}")
@@ -126,6 +126,6 @@ def evaluate(engine_name="tesseract", extreme_mode=False, mode_name=None):
 
 
 if __name__ == "__main__":
-    evaluate(engine_name="tesseract", extreme_mode=False, mode_name="CLEAN")
-    evaluate(engine_name="tesseract", extreme_mode=True, mode_name="EXTREME")
-    evaluate(engine_name="paddle", extreme_mode=False, mode_name="TRAIN")
+    evaluate(engine_name="tesseract", optimization_mode=False, mode_name="STANDARD")
+    evaluate(engine_name="tesseract", optimization_mode=True, mode_name="OPTIMIZED")
+    evaluate(engine_name="neural", optimization_mode=False, mode_name="NEURAL")

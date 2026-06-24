@@ -128,6 +128,6 @@ def get_ocr_engine(engine_name: str = "tesseract") -> OCREngine:
     name = engine_name.lower()
     if name == "tesseract":
         return TesseractEngine()
-    elif name in ("paddle", "train"):
+    elif name in ("paddle", "neural", "train"):
         return PaddleEngine()
     raise ValueError(f"Unknown OCR engine: {engine_name}")

@@ -108,7 +108,7 @@ def apply_math_repairs(
     fields: Dict[str, FieldValue],
     processed_images: Dict[int, Any],
     all_tokens: List[Token] = None,
-    extreme_mode: bool = False,
+    optimization_mode: bool = False,
 ) -> Dict[str, FieldValue]:
     """
     Repair fields using accounting math constraints and targeted OCR.
@@ -132,7 +132,7 @@ def apply_math_repairs(
         print(f"Checking eq: {target} = {summands} -> Residual = {residual}")
 
         # --- Phase 3 first: fill in a missing field via inverse search ---
-        if extreme_mode:
+        if optimization_mode:
             missing_suspects = [
                 s
                 for s in suspects

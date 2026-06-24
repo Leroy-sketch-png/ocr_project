@@ -16,3 +16,7 @@ addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
+
+[tool.pyright]
+extraPaths = ["."]
+

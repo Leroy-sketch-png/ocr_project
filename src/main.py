@@ -18,7 +18,7 @@ def process_file(
     path: str,
     config_path: str,
     engine_name: str = "tesseract",
-    extreme_mode: bool = False,
+    optimization_mode: bool = False,
 ) -> Dict[str, Any]:
     try:
         doc = load_document(path)
@@ -55,7 +55,10 @@ def process_file(
         page_idx: preprocess_image(pil_img) for page_idx, pil_img in doc.pages
     }
     field_values = apply_math_repairs(
-        field_values, processed_images, all_tokens, extreme_mode=extreme_mode
+        field_values,
+        processed_images,
+        all_tokens,
+        optimization_mode=optimization_mode,
     )
 
     validation_result = validate_fields(field_values, required_fields)
@@ -77,12 +80,24 @@ def main() -> None:
     )
     parser.add_argument("--engine", default="tesseract")
     parser.add_argument(
-        "--extreme", action="store_true", help="Enable Combinatorial Inverse Search"
+        "--optimize",
+        dest="optimize",
+        action="store_true",
+        help="Enable Constraint-Guided Optimization",
+    )
+    # Backwards compatibility: bind --extreme silently to optimization_mode
+    parser.add_argument(
+        "--extreme",
+        dest="optimize",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
 
     args = parser.parse_args()
 
-    result = process_file(args.file_path, args.config, args.engine, args.extreme)
+    result = process_file(
+        args.file_path, args.config, args.engine, optimization_mode=args.optimize
+    )
     print(json.dumps(result, indent=2))
 
 
