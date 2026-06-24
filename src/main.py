@@ -9,6 +9,7 @@ from .image_processor import preprocess_image
 from .io_loader import load_document
 from .ocr_engine import get_ocr_engine
 from .repair_engine import apply_math_repairs
+from .runtime_config import RuntimeConfigurationError, validate_runtime
 from .table_builder import build_table_rows, build_text_blocks
 from .validator import is_ocr_failure, validate_fields
 from .value_parser import parse_numeric_fields
@@ -21,7 +22,16 @@ def process_file(
     optimization_mode: bool = False,
 ) -> Dict[str, Any]:
     try:
+        validate_runtime(engine_name)
         doc = load_document(path)
+    except RuntimeConfigurationError as e:
+        return {
+            "error": str(e),
+            "remediation": [
+                "Install Tesseract OCR and ensure it is on PATH, or set TESSERACT_CMD.",
+                "If you selected --engine paddle, install the optional paddleocr package.",
+            ],
+        }
     except Exception as e:
         return {"error": str(e)}
 

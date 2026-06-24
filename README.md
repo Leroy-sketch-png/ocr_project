@@ -53,6 +53,7 @@ python -m src.main AA_SAMPLE1.pdf --optimize
 ## Runtime Notes
 
 - Tesseract is resolved in this order: `TESSERACT_CMD`, then `tesseract` on `PATH`.
+- If Tesseract or PaddleOCR is missing, the program returns a clean JSON error with a remediation hint instead of a traceback.
 - The repair engine applies accounting identities such as `Total Assets = Total Liabilities + Total Equity`.
 - When a field fails validation, the pipeline can re-check alternate cell candidates and re-OCR suspicious regions to recover from common OCR mistakes.
 
