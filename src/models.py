@@ -39,3 +39,4 @@ class FieldValue:
     bbox: Optional[Tuple[int, int, int, int]]
     valid: bool
     reason: Optional[str]  # why invalid / missing
+    row_candidates: Optional[List[Tuple[str, Optional[float]]]] = None

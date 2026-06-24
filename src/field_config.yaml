@@ -6,7 +6,7 @@ ProfitAndLoss:
   Profit/Loss Before Tax:
     keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Operating result before tax"]
   Net Profit/Loss:
-    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result"]
+    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)"]
   Operating Profit/Loss:
     keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations"]
   Cost of Sales:
@@ -16,21 +16,21 @@ Assets:
   Cash and Cash Equivalents:
     keywords: ["Cash and Cash Equivalents", "Cash & Cash Equivalents", "Bank deposits, cash in hand", "Bank deposits"]
   Current Assets:
-    keywords: ["Current Assets"]
+    keywords: ["Current Assets", "Total Current Assets", "Total current asset"]
   Non-Current Assets:
-    keywords: ["Non-Current Assets", "Noncurrent Assets", "Total fixed assets"]
+    keywords: ["Non-Current Assets", "Noncurrent Assets", "Total fixed assets", "Total Non-Current Assets", "Total non-current asset"]
   Plant and Equipment:
     keywords: ["Plant and Equipment", "Property Plant and Equipment", "Tangible fixed assets", "Tangible Total Fixtures"]
   Trade Receivables:
-    keywords: ["Trade Receivables", "Trade Debtors", "Accounts Receivables", "Accounts Receivable", "Accounts Other Total Receivables"]
+    keywords: ["Trade Receivables", "Trade Debtors", "Accounts Receivables", "Accounts Receivable", "Accounts Other Total Receivables", "Trade and other receivables"]
   Total Assets:
     keywords: ["Total Assets"]
 
 Liabilities:
   Current Liabilities:
-    keywords: ["Current Liabilities", "short-term liabilities", "shorL-term"]
+    keywords: ["Current Liabilities", "short-term liabilities", "shorL-term", "Total Current Liabilities", "Total current liability"]
   Non-Current Liabilities:
-    keywords: ["Non-Current Liabilities", "Noncurrent Liabilities"]
+    keywords: ["Non-Current Liabilities", "Noncurrent Liabilities", "Total Non-Current Liabilities", "Total non-current liability"]
   Total Liabilities:
     keywords: ["Total Liabilities", "Total ilities"]
 

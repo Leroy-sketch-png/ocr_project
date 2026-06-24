@@ -3,7 +3,41 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 from thefuzz import fuzz
 
+import re
+
 from .models import FieldValue, TableRow, TextBlock, Token
+
+def compute_match_score(query: str, desc: str) -> float:
+    """
+    Computes a match score based on token overlap. Penalizes extra modifiers 
+    unless they are present in the query.
+    """
+    q_clean = re.sub(r'[^a-z0-9\s]', '', query.lower())
+    d_clean = re.sub(r'[^a-z0-9\s]', '', desc.lower())
+    
+    q_tokens = set(q_clean.split())
+    d_tokens = set(d_clean.split())
+    
+    if not q_tokens or not d_tokens:
+        return 0.0
+        
+    intersection = q_tokens.intersection(d_tokens)
+    if not intersection:
+        return fuzz.ratio(query.lower(), desc.lower())
+        
+    recall = len(intersection) / len(q_tokens)
+    extra_words = len(d_tokens) - len(intersection)
+    
+    if recall == 1.0:
+        # Full overlap: prioritize exact matches with no extra words.
+        score = 100 - (extra_words * 10)
+        return max(score, fuzz.ratio(query.lower(), desc.lower()))
+    elif recall >= 0.5:
+        # Partial overlap (e.g., matching "receivables")
+        score = (recall * 100) - (extra_words * 10)
+        return max(score, fuzz.ratio(query.lower(), desc.lower()))
+        
+    return fuzz.ratio(query.lower(), desc.lower())
 
 
 def load_field_config(path: str) -> Dict[str, Any]:
@@ -39,6 +73,9 @@ def extract_fields(
             if isinstance(details, dict):
                 flat_config[field_name] = details.get("keywords", [])
 
+    # To track the highest scoring row per field
+    best_scores = {k: -1.0 for k in flat_config.keys()}
+
     # Extract numeric fields
     for row in table_rows:
         desc_lower = row.description.lower()
@@ -46,7 +83,10 @@ def extract_fields(
             if field_name == "Auditor’s Opinion":
                 continue  # Handled separately
 
-            if any(fuzz.ratio(kw.lower(), desc_lower) >= 82 for kw in keywords):
+            # Find best match score among keywords
+            best_kw_score = max((compute_match_score(kw, desc_lower) for kw in keywords), default=0.0)
+            
+            if best_kw_score >= 82:
                 best_cell_idx = 0
                 for idx, cell_text in enumerate(row.cells):
                     clean_text = cell_text.replace(",", "").replace(".", "").replace(" ", "").strip()
@@ -55,33 +95,58 @@ def extract_fields(
                     best_cell_idx = idx
                     break
                 
-                tokens_for_field = row.cell_tokens[best_cell_idx] if row.cell_tokens else []
                 raw_text = row.cells[best_cell_idx] if row.cells else None
-                
-                # To compare, we need to parse the value
                 from .value_parser import parse_numeric
                 val = parse_numeric(raw_text)
                 
-                # If we already have a result, only overwrite it if the new parsed value is larger (absolute).
-                # This prevents picking a 0.0 or empty value from a Cash Flow statement when the Balance Sheet has the real value.
-                if field_name in results:
-                    existing_val = parse_numeric(results[field_name].raw_text)
-                    if existing_val is not None and val is not None:
-                        if abs(val) <= abs(existing_val):
-                            continue
-                    elif existing_val is not None and val is None:
-                        continue
+                # Disambiguation logic:
+                # If we have a new score that is strictly greater than the old score, take it.
+                # If the score is the same (e.g. perfect match), prefer the one with the larger absolute value.
+                current_best_score = best_scores[field_name]
+                should_update = False
                 
-                results[field_name] = FieldValue(
-                        name=field_name,
-                        value=None,  # To be parsed later
-                        raw_text=row.cells[best_cell_idx] if row.cells else None,
-                        page=row.page,
-                        tokens=tokens_for_field,
-                        bbox=compute_bbox(tokens_for_field),
-                        valid=False,
-                        reason=None,
-                    )
+                if best_kw_score > current_best_score:
+                    should_update = True
+                elif best_kw_score == current_best_score:
+                    if val is not None:
+                        # Same score, check if value is larger
+                        if field_name in results:
+                            existing_val = parse_numeric(results[field_name].raw_text)
+                            if existing_val is not None:
+                                if abs(val) > abs(existing_val):
+                                    should_update = True
+                            else:
+                                should_update = True
+                    
+                    # Also accumulate row candidates from this tied row into the existing field
+                    if field_name in results and not should_update:
+                        for cell_text in row.cells:
+                            cval = parse_numeric(cell_text)
+                            if cval is not None:
+                                results[field_name].row_candidates.append((cell_text, cval))
+                
+                if should_update:
+                    best_scores[field_name] = best_kw_score
+                    tokens_for_field = row.cell_tokens[best_cell_idx] if row.cell_tokens else []
+                    
+                    # Store all parsed numeric cells from this row as candidates for the repair engine
+                    row_cands = []
+                    for cell_text in row.cells:
+                        cval = parse_numeric(cell_text)
+                        if cval is not None:
+                            row_cands.append((cell_text, cval))
+                            
+                    results[field_name] = FieldValue(
+                            name=field_name,
+                            value=None,  # To be parsed later
+                            raw_text=raw_text,
+                            page=row.page,
+                            tokens=tokens_for_field,
+                            bbox=compute_bbox(tokens_for_field),
+                            valid=False,
+                            reason=None,
+                            row_candidates=row_cands,
+                        )
 
     # Extract Auditor's Opinion
     auditor_kws = flat_config.get("Auditor’s Opinion", [])

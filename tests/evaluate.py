@@ -25,16 +25,19 @@ def compare_values(extracted, expected) -> bool:
     except (ValueError, TypeError):
         return str(extracted) == str(expected)
 
-def evaluate():
+def evaluate(extreme_mode=False):
     samples = [
-        {"pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE1.pdf", "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\sample1_gt.json"},
-        {"pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE2.pdf", "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\sample2_gt.json"},
-        {"pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE3.pdf", "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\sample3_gt.json"}
+        {"pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE1.pdf", "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\hand_labeled_gt\sample1_gt.json"},
+        {"pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE2.pdf", "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\hand_labeled_gt\sample2_gt.json"},
+        {"pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE3.pdf", "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\hand_labeled_gt\sample3_gt.json"}
     ]
     
     total_expected = 0
     total_extracted = 0
     total_correct = 0
+    
+    mode_name = "EXTREME" if extreme_mode else "CLEAN"
+    print(f"\n[{mode_name} MODE]")
     
     for sample in samples:
         pdf_path = sample["pdf"]
@@ -49,13 +52,11 @@ def evaluate():
         
         try:
             config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "field_config.yaml")
-            result = process_file(pdf_path, config_path)
+            result = process_file(pdf_path, config_path, extreme_mode=extreme_mode)
         except Exception as e:
             print(f"Pipeline crashed on {pdf_path}: {e}")
             continue
             
-        # In V3.5 we flattened the output to match the task requirement, so result IS the fields dictionary
-        # except for the 'error' key if it exists
         fields = {k: v for k, v in result.items() if k != "error"}
         
         for field_name, expected_val in gt_data.items():
@@ -64,10 +65,6 @@ def evaluate():
                 
                 extracted_data = fields.get(field_name, {})
                 extracted_val = extracted_data.get("value")
-                
-                # Check for Auditor's Opinion special case where value might be null but raw_text holds the string
-                if field_name == "Auditor’s Opinion" and extracted_val is None:
-                    extracted_val = extracted_data.get("raw_text")
                 
                 if extracted_val is not None:
                     total_extracted += 1
@@ -82,7 +79,7 @@ def evaluate():
     f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
     
     print("\n" + "="*40)
-    print("[ BENCHMARK RESULTS ]")
+    print(f"[ {mode_name} BENCHMARK RESULTS ]")
     print("="*40)
     print(f"Total Fields Expected: {total_expected}")
     print(f"Total Fields Extracted: {total_extracted}")
@@ -93,4 +90,5 @@ def evaluate():
     print("="*40)
 
 if __name__ == '__main__':
-    evaluate()
+    evaluate(extreme_mode=False)
+    evaluate(extreme_mode=True)
