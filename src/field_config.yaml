@@ -1,0 +1,47 @@
+ProfitAndLoss:
+  Revenue:
+    keywords: ["Revenue", "Turnover", "Sales"]
+  Gross Profit/Loss:
+    keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss"]
+  Profit/Loss Before Tax:
+    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT"]
+  Net Profit/Loss:
+    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss"]
+  Operating Profit/Loss:
+    keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss"]
+  Cost of Sales:
+    keywords: ["Cost of Sales", "Cost of Goods Sold"]
+
+Assets:
+  Cash and Cash Equivalents:
+    keywords: ["Cash and Cash Equivalents", "Cash & Cash Equivalents"]
+  Current Assets:
+    keywords: ["Current Assets"]
+  Non-Current Assets:
+    keywords: ["Non-Current Assets", "Noncurrent Assets"]
+  Plant and Equipment:
+    keywords: ["Plant and Equipment", "Property Plant and Equipment"]
+  Trade Receivables:
+    keywords: ["Trade Receivables", "Trade Debtors"]
+  Total Assets:
+    keywords: ["Total Assets"]
+
+Liabilities:
+  Current Liabilities:
+    keywords: ["Current Liabilities"]
+  Non-Current Liabilities:
+    keywords: ["Non-Current Liabilities", "Noncurrent Liabilities"]
+  Total Liabilities:
+    keywords: ["Total Liabilities"]
+
+Equity:
+  Paid Up Capital:
+    keywords: ["Paid Up Capital", "Share Capital"]
+  Retained Earnings:
+    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses"]
+  Total Equity:
+    keywords: ["Total Equity", "Total Shareholders' Equity"]
+
+Auditor:
+  Auditor’s Opinion:
+    keywords: ["Opinion", "In our opinion", "Qualified opinion", "Adverse opinion", "Unqualified opinion", "Disclaimer of opinion"]
