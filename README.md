@@ -60,7 +60,7 @@ python -m src.main --check-env
 
 ## Runtime Notes
 
-- Tesseract is resolved in this order: `TESSERACT_CMD`, then `tesseract` on `PATH`.
+- Tesseract is resolved in this order: `TESSERACT_CMD`, `tesseract` on `PATH`, then common Windows install locations such as `%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe`.
 - If Tesseract or PaddleOCR is missing, the program returns a clean JSON error with a remediation hint instead of a traceback.
 - `--check-env` confirms local prerequisites before execution.
 - The repair engine applies accounting identities such as `Total Assets = Total Liabilities + Total Equity`.

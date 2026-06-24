@@ -15,7 +15,8 @@ def get_tesseract_cmd() -> str:
     Priority:
     1. TESSERACT_CMD environment variable
     2. tesseract discovered on PATH
-    3. Let pytesseract rely on the default executable name
+    3. Common per-user and system install locations
+    4. Let pytesseract rely on the default executable name
     """
     env_path = os.environ.get("TESSERACT_CMD", "").strip()
     if env_path:
@@ -24,6 +25,28 @@ def get_tesseract_cmd() -> str:
     discovered = shutil.which("tesseract")
     if discovered:
         return discovered
+
+    candidate_paths = []
+    local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
+    program_files = os.environ.get("PROGRAMFILES", "").strip()
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", "").strip()
+
+    if local_appdata:
+        candidate_paths.append(
+            Path(local_appdata) / "Programs" / "Tesseract-OCR" / "tesseract.exe"
+        )
+    if program_files:
+        candidate_paths.append(
+            Path(program_files) / "Tesseract-OCR" / "tesseract.exe"
+        )
+    if program_files_x86:
+        candidate_paths.append(
+            Path(program_files_x86) / "Tesseract-OCR" / "tesseract.exe"
+        )
+
+    for candidate in candidate_paths:
+        if candidate.exists():
+            return str(candidate)
 
     return "tesseract"
 
