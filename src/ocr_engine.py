@@ -6,10 +6,14 @@ from pytesseract import Output  # type: ignore
 
 from .image_processor import preprocess_image
 from .models import Token
+from .runtime_config import get_tesseract_cmd
 
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Users\c-leroy.phan\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
-)
+pytesseract.pytesseract.tesseract_cmd = get_tesseract_cmd()
+
+try:
+    from paddleocr import PaddleOCR  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    PaddleOCR = None
 
 
 class OCREngine(ABC):
@@ -55,7 +59,11 @@ class PaddleEngine(OCREngine):
     def __init__(self) -> None:
         import logging
 
-        from paddleocr import PaddleOCR  # type: ignore
+        if PaddleOCR is None:
+            raise RuntimeError(
+                "PaddleOCR is not installed. Install the optional paddleocr "
+                "dependency or use --engine tesseract."
+            )
 
         # Suppress verbose paddleocr logging
         logging.getLogger("ppocr").setLevel(logging.ERROR)

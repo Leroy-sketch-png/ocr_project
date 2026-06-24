@@ -32,18 +32,20 @@ def compare_values(extracted, expected) -> bool:
 
 
 def evaluate(engine_name="tesseract", optimization_mode=False, mode_name=None):
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    workspace_dir = os.path.dirname(project_dir)
     samples = [
         {
-            "pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE1.pdf",
-            "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\hand_labeled_gt\sample1_gt.json",
+            "pdf": os.path.join(workspace_dir, "AA_SAMPLE1.pdf"),
+            "gt": os.path.join(project_dir, "tests", "hand_labeled_gt", "sample1_gt.json"),
         },
         {
-            "pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE2.pdf",
-            "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\hand_labeled_gt\sample2_gt.json",
+            "pdf": os.path.join(workspace_dir, "AA_SAMPLE2.pdf"),
+            "gt": os.path.join(project_dir, "tests", "hand_labeled_gt", "sample2_gt.json"),
         },
         {
-            "pdf": r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE3.pdf",
-            "gt": r"c:\Users\c-leroy.phan\Downloads\ai\ocr_project\tests\hand_labeled_gt\sample3_gt.json",
+            "pdf": os.path.join(workspace_dir, "AA_SAMPLE3.pdf"),
+            "gt": os.path.join(project_dir, "tests", "hand_labeled_gt", "sample3_gt.json"),
         },
     ]
 
@@ -72,7 +74,7 @@ def evaluate(engine_name="tesseract", optimization_mode=False, mode_name=None):
 
         try:
             config_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                project_dir,
                 "src",
                 "field_config.yaml",
             )

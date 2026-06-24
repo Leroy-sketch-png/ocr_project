@@ -1,11 +1,20 @@
 import json
 import os
 
-from paddleocr import PaddleOCR
 from pdfplumber import open as pdf_open
+
+try:
+    from paddleocr import PaddleOCR
+except ImportError:  # pragma: no cover - optional helper dependency
+    PaddleOCR = None
 
 
 def extract_pdf_text_paddle(pdf_path: str):
+    if PaddleOCR is None:
+        raise RuntimeError(
+            "PaddleOCR is required to generate ground truth with this helper."
+        )
+
     ocr = PaddleOCR(use_textline_orientation=True, lang="en")
     doc = pdf_open(pdf_path)
 
@@ -27,10 +36,12 @@ def extract_pdf_text_paddle(pdf_path: str):
 
 
 def main():
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    workspace_dir = os.path.dirname(project_dir)
     samples = [
-        r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE1.pdf",
-        r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE2.pdf",
-        r"c:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE3.pdf",
+        os.path.join(workspace_dir, "AA_SAMPLE1.pdf"),
+        os.path.join(workspace_dir, "AA_SAMPLE2.pdf"),
+        os.path.join(workspace_dir, "AA_SAMPLE3.pdf"),
     ]
 
     for sample in samples:

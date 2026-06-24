@@ -2,9 +2,9 @@ import pytesseract
 from PIL import Image
 from pytesseract import Output
 
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Users\c-leroy.phan\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
-)
+from .runtime_config import get_tesseract_cmd
+
+pytesseract.pytesseract.tesseract_cmd = get_tesseract_cmd()
 
 
 def targeted_ocr(pil_image: Image.Image, bbox: tuple) -> str:
