@@ -94,9 +94,16 @@ def main() -> None:
     )
     parser.add_argument("--engine", default="tesseract")
     parser.add_argument(
-        "--doctor",
+        "--check-env",
+        dest="check_env",
         action="store_true",
         help="Check local OCR prerequisites and exit without processing a file.",
+    )
+    parser.add_argument(
+        "--doctor",
+        dest="check_env",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--optimize",
@@ -114,12 +121,12 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.doctor:
+    if args.check_env:
         print(json.dumps(inspect_runtime(args.engine), indent=2))
         return
 
     if not args.file_path:
-        parser.error("file_path is required unless --doctor is used")
+        parser.error("file_path is required unless --check-env is used")
 
     result = process_file(
         args.file_path, args.config, args.engine, optimization_mode=args.optimize
