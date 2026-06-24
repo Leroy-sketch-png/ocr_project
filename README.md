@@ -43,6 +43,7 @@ Useful flags:
 - `--engine paddle` uses PaddleOCR if installed.
 - `--optimize` enables the math repair pass.
 - `--extreme` is a compatibility alias for `--optimize`.
+- `--doctor` checks your setup and prints a friendly readiness report.
 
 Example:
 
@@ -50,10 +51,17 @@ Example:
 python -m src.main AA_SAMPLE1.pdf --optimize
 ```
 
+Preflight check:
+
+```bash
+python -m src.main --doctor
+```
+
 ## Runtime Notes
 
 - Tesseract is resolved in this order: `TESSERACT_CMD`, then `tesseract` on `PATH`.
 - If Tesseract or PaddleOCR is missing, the program returns a clean JSON error with a remediation hint instead of a traceback.
+- `--doctor` is the fastest way for a trainer to confirm setup before evaluating a file.
 - The repair engine applies accounting identities such as `Total Assets = Total Liabilities + Total Equity`.
 - When a field fails validation, the pipeline can re-check alternate cell candidates and re-OCR suspicious regions to recover from common OCR mistakes.
 

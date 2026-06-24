@@ -9,7 +9,11 @@ from .image_processor import preprocess_image
 from .io_loader import load_document
 from .ocr_engine import get_ocr_engine
 from .repair_engine import apply_math_repairs
-from .runtime_config import RuntimeConfigurationError, validate_runtime
+from .runtime_config import (
+    RuntimeConfigurationError,
+    inspect_runtime,
+    validate_runtime,
+)
 from .table_builder import build_table_rows, build_text_blocks
 from .validator import is_ocr_failure, validate_fields
 from .value_parser import parse_numeric_fields
@@ -83,12 +87,17 @@ def process_file(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Offline OCR Pipeline")
-    parser.add_argument("file_path", help="Path to PDF or Image file")
+    parser.add_argument("file_path", nargs="?", help="Path to PDF or Image file")
     parser.add_argument(
         "--config",
         default=os.path.join(os.path.dirname(__file__), "field_config.yaml"),
     )
     parser.add_argument("--engine", default="tesseract")
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Check local OCR prerequisites and exit without processing a file.",
+    )
     parser.add_argument(
         "--optimize",
         dest="optimize",
@@ -104,6 +113,13 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    if args.doctor:
+        print(json.dumps(inspect_runtime(args.engine), indent=2))
+        return
+
+    if not args.file_path:
+        parser.error("file_path is required unless --doctor is used")
 
     result = process_file(
         args.file_path, args.config, args.engine, optimization_mode=args.optimize

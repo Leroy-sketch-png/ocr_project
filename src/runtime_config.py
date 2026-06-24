@@ -1,6 +1,7 @@
 import os
 import shutil
 from pathlib import Path
+from typing import Any, Dict
 
 
 class RuntimeConfigurationError(RuntimeError):
@@ -58,3 +59,82 @@ def validate_runtime(engine_name: str = "tesseract") -> None:
                 "PaddleOCR is not installed. Either install the optional "
                 "'paddleocr' dependency or run with --engine tesseract."
             ) from exc
+
+
+def inspect_runtime(engine_name: str = "tesseract") -> Dict[str, Any]:
+    """
+    Collect a friendly runtime readiness report for CLI diagnostics.
+    """
+    report: Dict[str, Any] = {
+        "ok": True,
+        "engine": engine_name,
+        "checks": {},
+        "remediation": [],
+    }
+
+    tesseract_cmd = get_tesseract_cmd()
+    if tesseract_cmd == "tesseract":
+        if shutil.which("tesseract") is None:
+            report["ok"] = False
+            report["checks"]["tesseract"] = {
+                "status": "missing",
+                "message": "Tesseract was not found on PATH.",
+            }
+            report["remediation"].append(
+                "Install Tesseract OCR or set TESSERACT_CMD to the executable path."
+            )
+        else:
+            report["checks"]["tesseract"] = {
+                "status": "ready",
+                "message": "Tesseract is available on PATH.",
+            }
+    else:
+        tesseract_path = Path(tesseract_cmd)
+        if tesseract_path.exists():
+            report["checks"]["tesseract"] = {
+                "status": "ready",
+                "message": f"Tesseract configured at {tesseract_cmd}.",
+            }
+        else:
+            report["ok"] = False
+            report["checks"]["tesseract"] = {
+                "status": "missing",
+                "message": f"Tesseract executable not found at {tesseract_cmd}.",
+            }
+            report["remediation"].append(
+                "Update TESSERACT_CMD to a valid path or install Tesseract on PATH."
+            )
+
+    if engine_name.lower() in ("paddle", "neural", "train"):
+        try:
+            import paddleocr  # type: ignore  # noqa: F401
+        except ImportError:
+            report["ok"] = False
+            report["checks"]["paddleocr"] = {
+                "status": "missing",
+                "message": "PaddleOCR is not installed.",
+            }
+            report["remediation"].append(
+                "Install the optional 'paddleocr' dependency or use --engine tesseract."
+            )
+        else:
+            report["checks"]["paddleocr"] = {
+                "status": "ready",
+                "message": "PaddleOCR is installed.",
+            }
+    else:
+        report["checks"]["paddleocr"] = {
+            "status": "not_requested",
+            "message": "PaddleOCR is not required for the selected engine.",
+        }
+
+    if report["ok"]:
+        report["summary"] = (
+            "Environment looks ready for the selected OCR engine."
+        )
+    else:
+        report["summary"] = (
+            "Environment needs a small setup step before the OCR pipeline can run."
+        )
+
+    return report
