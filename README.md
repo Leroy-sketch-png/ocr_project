@@ -74,6 +74,17 @@ Available flags:
 - The repair engine is constraint-driven and only adjusts values when accounting identities support the change.
 - The CLI can print to stdout and write a JSON artifact so the same run supports both inspection and submission.
 
+## Assignment Coverage
+
+- Task 1, file input: [src/io_loader.py](src/io_loader.py)
+- Task 2, OCR extraction: [src/ocr_engine.py](src/ocr_engine.py)
+- Task 3, table reconstruction: [src/table_builder.py](src/table_builder.py)
+- Task 4, field extraction: [src/field_extractor.py](src/field_extractor.py) and [src/field_config.yaml](src/field_config.yaml)
+- Task 5, value parsing: [src/value_parser.py](src/value_parser.py)
+- Task 6, validation: [src/validator.py](src/validator.py)
+- Task 7, OCR failure detection: [src/validator.py](src/validator.py)
+- Task 8, structured output with evidence: [src/exporter.py](src/exporter.py) and [artifacts/sample1_output.json](artifacts/sample1_output.json)
+
 ## Example Output
 
 The repository can write a submission artifact such as:
@@ -83,7 +94,7 @@ The repository can write a submission artifact such as:
 ```
 
 The generated JSON contains the extracted fields, evidence text, page numbers, and any validation message.
-An example artifact is included at [artifacts/sample1_output.json](/C:/Users/c-leroy.phan/Downloads/ai/ocr_project/artifacts/sample1_output.json).
+An example artifact is included at [artifacts/sample1_output.json](artifacts/sample1_output.json).
 
 ## Running Tests & Validation
 

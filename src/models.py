@@ -32,7 +32,7 @@ class TableRow:
 @dataclass
 class FieldValue:
     name: str
-    value: Optional[float]  # parsed numeric or None
+    value: Optional[Any]  # parsed numeric value, normalized category, or None
     raw_text: Optional[str]  # string as seen in document
     page: Optional[int]
     tokens: List[Token]  # evidence

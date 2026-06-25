@@ -58,6 +58,22 @@ def compute_bbox(tokens: List[Token]) -> Optional[Tuple[int, int, int, int]]:
     return (x1, y1, x2, y2)
 
 
+def normalize_auditor_opinion(text: str) -> Optional[str]:
+    """
+    Convert a matched auditor paragraph into one of the assignment labels.
+    """
+    text_lower = text.lower()
+    if "disclaimer of opinion" in text_lower:
+        return "Disclaimer"
+    if "adverse opinion" in text_lower:
+        return "Adverse"
+    if "qualified opinion" in text_lower:
+        return "Qualified"
+    if "unqualified opinion" in text_lower or "unmodified opinion" in text_lower:
+        return "Unqualified"
+    return None
+
+
 def extract_fields(
     table_rows: List[TableRow],
     text_blocks: List[TextBlock],
@@ -166,15 +182,18 @@ def extract_fields(
         text_lower = " ".join(t.text for t in block.tokens).lower()
         for kw in auditor_kws:
             if kw.lower() in text_lower:
+                opinion_value = normalize_auditor_opinion(text_lower)
+                if opinion_value is None:
+                    opinion_value = normalize_auditor_opinion(kw)
                 results["Auditor’s Opinion"] = FieldValue(
                     name="Auditor’s Opinion",
-                    value=None,
+                    value=opinion_value,
                     raw_text=kw,  # Use the keyword found as standard text
                     page=block.page,
                     tokens=block.tokens,
                     bbox=compute_bbox(block.tokens),
-                    valid=True,
-                    reason=None,
+                    valid=opinion_value is not None,
+                    reason=None if opinion_value is not None else "opinion_parse_error",
                 )
                 break
 
