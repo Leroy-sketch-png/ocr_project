@@ -17,10 +17,6 @@ A fully offline, OCR-based financial data extraction pipeline relying on Tessera
 1. Install Tesseract OCR.
    - Install Tesseract system-wide.
    - Make sure the executable is available on `PATH`, or set `TESSERACT_CMD` to the full executable path.
-   - Optional example:
-     ```powershell
-     $env:TESSERACT_CMD = "<full-path-to-tesseract.exe>"
-     ```
 
 2. Install the Python dependencies.
    ```powershell
@@ -69,7 +65,7 @@ Available flags:
 - `--engine paddle` is available as an alternate OCR backend.
 - It requires the optional `paddleocr` package.
 
-## Running Tests & OCD Protocol Validation
+## Running Tests & Validation
 
 ```bash
 pytest tests/
