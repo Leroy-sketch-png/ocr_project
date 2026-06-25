@@ -4,3 +4,4 @@ __pycache__/
 *.log
 *.pdf
 debug_output.txt
+.venv/

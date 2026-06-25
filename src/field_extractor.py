@@ -96,7 +96,7 @@ def extract_fields(
     for row in table_rows:
         desc_lower = row.description.lower()
         for field_name, keywords in flat_config.items():
-            if field_name == "Auditor’s Opinion":
+            if field_name == "Auditor's Opinion":
                 continue  # Handled separately
 
             # Find best match score among keywords
@@ -177,7 +177,7 @@ def extract_fields(
                     )
 
     # Extract Auditor's Opinion
-    auditor_kws = flat_config.get("Auditor’s Opinion", [])
+    auditor_kws = flat_config.get("Auditor's Opinion", [])
     for block in text_blocks:
         text_lower = " ".join(t.text for t in block.tokens).lower()
         for kw in auditor_kws:
@@ -185,8 +185,8 @@ def extract_fields(
                 opinion_value = normalize_auditor_opinion(text_lower)
                 if opinion_value is None:
                     opinion_value = normalize_auditor_opinion(kw)
-                results["Auditor’s Opinion"] = FieldValue(
-                    name="Auditor’s Opinion",
+                results["Auditor's Opinion"] = FieldValue(
+                    name="Auditor's Opinion",
                     value=opinion_value,
                     raw_text=kw,  # Use the keyword found as standard text
                     page=block.page,

@@ -40,7 +40,7 @@ def parse_numeric(raw: Optional[str]) -> Optional[float]:
 
 def parse_numeric_fields(field_values: Dict[str, FieldValue]) -> None:
     for name, fv in field_values.items():
-        if name != "Auditor’s Opinion":
+        if name != "Auditor's Opinion":
             fv.value = parse_numeric(fv.raw_text)
             if fv.value is None and fv.raw_text:
                 fv.valid = False

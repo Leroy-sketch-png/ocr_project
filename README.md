@@ -19,8 +19,8 @@ A fully offline, OCR-based financial data extraction pipeline relying on Tessera
    - Make sure the executable is available on `PATH`, or set `TESSERACT_CMD` to the full executable path.
 
 2. Install the Python dependencies.
-   ```powershell
-   .\setup.ps1
+   ```bat
+   .\setup.cmd
    ```
 
 3. Optionally point `TESSERACT_CMD` at your local executable.
@@ -34,8 +34,8 @@ A fully offline, OCR-based financial data extraction pipeline relying on Tessera
    ```
 
 5. Run the pipeline.
-   ```powershell
-   .\run.ps1 -Path .\AA_SAMPLE1.pdf -Optimize -Output .\artifacts\sample1_output.json
+   ```bat
+   .\run.cmd ..\AA_SAMPLE1.pdf --optimize --output .\artifacts\sample1_output.json
    ```
 
 ## Command Line
@@ -66,6 +66,19 @@ Available flags:
 - `--engine paddle` is available as an alternate OCR backend.
 - It requires the optional `paddleocr` package.
 
+## Evaluation Report
+
+To regenerate the saved evaluation summary and comparison report:
+
+```bat
+python .\tools\generate_evaluation_report.py
+```
+
+This writes:
+
+- [artifacts/evaluation_report.json](artifacts/evaluation_report.json)
+- [artifacts/evaluation_report.md](artifacts/evaluation_report.md)
+
 ## Design Decisions
 
 - The pipeline is split into small modules so each stage can be tested independently.
@@ -90,7 +103,7 @@ Available flags:
 The repository can write a submission artifact such as:
 
 ```powershell
-.\run.ps1 -Path ..\AA_SAMPLE1.pdf -Optimize -Output .\artifacts\sample1_output.json
+.\run.cmd ..\AA_SAMPLE1.pdf --optimize --output .\artifacts\sample1_output.json
 ```
 
 The generated JSON contains the extracted fields, evidence text, page numbers, and any validation message.

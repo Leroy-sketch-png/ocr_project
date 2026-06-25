@@ -1,0 +1,157 @@
+{
+  "generated_at": "2026-06-25T08:03:01",
+  "overall": {
+    "total_expected": 48,
+    "total_extracted": 40,
+    "total_correct": 39,
+    "precision": 97.5,
+    "recall": 81.25,
+    "f1": 88.64
+  },
+  "samples": [
+    {
+      "sample": "sample1",
+      "pdf": "AA_SAMPLE1.pdf",
+      "total_expected": 14,
+      "total_extracted": 11,
+      "total_correct": 11,
+      "precision": 100.0,
+      "recall": 78.57,
+      "f1": 88.0,
+      "error": "Review the following fields: Net Profit/Loss, Operating Profit/Loss, Plant and Equipment, Current Liabilities, Non-Current Liabilities",
+      "mismatches": [
+        {
+          "field": "Net Profit/Loss",
+          "expected": -87557.0,
+          "extracted": null,
+          "raw_text": null
+        },
+        {
+          "field": "Current Liabilities",
+          "expected": 27276.0,
+          "extracted": null,
+          "raw_text": null
+        },
+        {
+          "field": "Non-Current Liabilities",
+          "expected": 0.0,
+          "extracted": null,
+          "raw_text": null
+        }
+      ],
+      "output_fields": [
+        "Revenue",
+        "Gross Profit/Loss",
+        "Profit/Loss Before Tax",
+        "Cash and Cash Equivalents",
+        "Trade Receivables",
+        "Total Assets",
+        "Total Liabilities",
+        "Paid Up Capital",
+        "Retained Earnings",
+        "Auditor's Opinion",
+        "Cost of Sales",
+        "Current Assets",
+        "Non-Current Assets",
+        "Total Equity"
+      ]
+    },
+    {
+      "sample": "sample2",
+      "pdf": "AA_SAMPLE2.pdf",
+      "total_expected": 17,
+      "total_extracted": 16,
+      "total_correct": 16,
+      "precision": 100.0,
+      "recall": 94.12,
+      "f1": 96.97,
+      "error": "Review the following fields: Gross Profit/Loss, Retained Earnings, Auditor's Opinion",
+      "mismatches": [
+        {
+          "field": "Retained Earnings",
+          "expected": 48008912.0,
+          "extracted": null,
+          "raw_text": null
+        }
+      ],
+      "output_fields": [
+        "Revenue",
+        "Cost of Sales",
+        "Operating Profit/Loss",
+        "Profit/Loss Before Tax",
+        "Net Profit/Loss",
+        "Total Assets",
+        "Non-Current Assets",
+        "Plant and Equipment",
+        "Trade Receivables",
+        "Cash and Cash Equivalents",
+        "Current Assets",
+        "Paid Up Capital",
+        "Total Equity",
+        "Current Liabilities",
+        "Non-Current Liabilities",
+        "Total Liabilities",
+        "Auditor's Opinion"
+      ]
+    },
+    {
+      "sample": "sample3",
+      "pdf": "AA_SAMPLE3.pdf",
+      "total_expected": 17,
+      "total_extracted": 13,
+      "total_correct": 12,
+      "precision": 92.31,
+      "recall": 70.59,
+      "f1": 80.0,
+      "error": "Review the following fields: Net Profit/Loss, Operating Profit/Loss, Non-Current Assets, Current Liabilities, Non-Current Liabilities, Auditor's Opinion",
+      "mismatches": [
+        {
+          "field": "Net Profit/Loss",
+          "expected": 248084.0,
+          "extracted": null,
+          "raw_text": null
+        },
+        {
+          "field": "Plant and Equipment",
+          "expected": 1.0,
+          "extracted": 3.0,
+          "raw_text": "3."
+        },
+        {
+          "field": "Non-Current Assets",
+          "expected": 5596.0,
+          "extracted": null,
+          "raw_text": null
+        },
+        {
+          "field": "Current Liabilities",
+          "expected": 818988.0,
+          "extracted": null,
+          "raw_text": null
+        },
+        {
+          "field": "Non-Current Liabilities",
+          "expected": 1463.0,
+          "extracted": null,
+          "raw_text": null
+        }
+      ],
+      "output_fields": [
+        "Trade Receivables",
+        "Cash and Cash Equivalents",
+        "Total Assets",
+        "Total Liabilities",
+        "Paid Up Capital",
+        "Retained Earnings",
+        "Total Equity",
+        "Revenue",
+        "Cost of Sales",
+        "Gross Profit/Loss",
+        "Plant and Equipment",
+        "Profit/Loss Before Tax",
+        "Auditor's Opinion",
+        "Current Assets"
+      ]
+    }
+  ]
+}
