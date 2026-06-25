@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 from typing import Any, Dict, List
 
 from .exporter import field_value_to_dict
@@ -118,6 +119,10 @@ def main() -> None:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--output",
+        help="Write the JSON result to a file in addition to stdout.",
+    )
 
     args = parser.parse_args()
 
@@ -131,7 +136,14 @@ def main() -> None:
     result = process_file(
         args.file_path, args.config, args.engine, optimization_mode=args.optimize
     )
-    print(json.dumps(result, indent=2))
+    rendered = json.dumps(result, indent=2, ensure_ascii=False)
+
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(rendered + "\n", encoding="utf-8")
+
+    print(rendered)
 
 
 if __name__ == "__main__":

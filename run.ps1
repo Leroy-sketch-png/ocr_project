@@ -8,6 +8,8 @@ param(
 
     [switch]$CheckEnv,
 
+    [string]$Output,
+
     [string]$Config
 )
 
@@ -39,6 +41,10 @@ $pythonExe = if (Test-Path (Join-Path $PSScriptRoot ".venv\Scripts\python.exe"))
 $args = @("-m", "src.main", $Path, "--config", $Config, "--engine", $Engine)
 if ($Optimize) {
     $args += "--optimize"
+}
+if (-not [string]::IsNullOrWhiteSpace($Output)) {
+    $args += "--output"
+    $args += $Output
 }
 
 & $pythonExe @args

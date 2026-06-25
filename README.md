@@ -35,7 +35,7 @@ A fully offline, OCR-based financial data extraction pipeline relying on Tessera
 
 5. Run the pipeline.
    ```powershell
-   .\run.ps1 -Path .\AA_SAMPLE1.pdf -Optimize
+   .\run.ps1 -Path .\AA_SAMPLE1.pdf -Optimize -Output .\artifacts\sample1_output.json
    ```
 
 ## Command Line
@@ -51,6 +51,7 @@ Available flags:
 - `--optimize` enables the math repair pass.
 - `--extreme` is a compatibility alias for `--optimize`.
 - `--check-env` prints an environment readiness report.
+- `--output` writes the JSON response to a file.
 
 ## Runtime Notes
 
@@ -64,6 +65,25 @@ Available flags:
 
 - `--engine paddle` is available as an alternate OCR backend.
 - It requires the optional `paddleocr` package.
+
+## Design Decisions
+
+- The pipeline is split into small modules so each stage can be tested independently.
+- OCR output is preserved with page number and evidence so every extracted value remains traceable.
+- Validation happens after extraction so partially correct runs still return structured results.
+- The repair engine is constraint-driven and only adjusts values when accounting identities support the change.
+- The CLI can print to stdout and write a JSON artifact so the same run supports both inspection and submission.
+
+## Example Output
+
+The repository can write a submission artifact such as:
+
+```powershell
+.\run.ps1 -Path ..\AA_SAMPLE1.pdf -Optimize -Output .\artifacts\sample1_output.json
+```
+
+The generated JSON contains the extracted fields, evidence text, page numbers, and any validation message.
+An example artifact is included at [artifacts/sample1_output.json](/C:/Users/c-leroy.phan/Downloads/ai/ocr_project/artifacts/sample1_output.json).
 
 ## Running Tests & Validation
 
