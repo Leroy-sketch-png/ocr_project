@@ -62,6 +62,27 @@ def _residual_ok(residual: Optional[float]) -> bool:
     return residual is not None and abs(residual) < _RESIDUAL_TOLERANCE
 
 
+# Maximum allowed change ratio for a repair. If a proposed repair would change
+# a field's value by more than this fraction, REJECT the repair rather than
+# cascade-destroying correct fields to satisfy a broken equation.
+_MAX_REPAIR_DELTA_RATIO = 0.15  # 15% — tight enough to catch wrong-year extractions
+
+def _is_safe_repair(current_val: Optional[float], proposed_val: float) -> bool:
+    """
+    Return True if replacing current_val with proposed_val is a plausible
+    OCR correction rather than a wrong-year or wrong-field substitution.
+    
+    Rule: If the proposed value is more than 15% different from the current
+    value, reject the repair. This prevents the engine from overwriting
+    trade receivables = 74,677 with 113,718 just because it satisfies
+    a broken equation — a 52% change is not an OCR error.
+    """
+    if current_val is None or current_val == 0.0:
+        return True  # No current value — accept any proposed value
+    delta_ratio = abs(proposed_val - current_val) / abs(current_val)
+    return delta_ratio <= _MAX_REPAIR_DELTA_RATIO
+
+
 def generate_candidates(raw_text: str) -> List[str]:
     """
     Given a raw numeric string, generate slight mutations that fix common OCR errors.
@@ -362,14 +383,24 @@ def apply_math_repairs(
 
         if best_repair:
             field, cand_raw, cand_val = best_repair
-            repaired_fields[field].raw_text = cand_raw
-            repaired_fields[field].value = cand_val
-            repaired_fields[field].reason = "accounting_repair"
-            logger.debug(
-                "  [REPAIR] %s: %s -> %s",
-                field,
-                fields.get(field, None) and fields[field].raw_text,
-                cand_raw,
-            )
+            current_val = repaired_fields[field].value
+            if not _is_safe_repair(current_val, cand_val):
+                logger.debug(
+                    "  [REPAIR REJECTED] %s: proposed %s would change %.1f%% from %s — too destructive",
+                    field, cand_raw,
+                    abs(cand_val - (current_val or 0)) / (abs(current_val) + 1e-9) * 100,
+                    current_val,
+                )
+            else:
+                repaired_fields[field].raw_text = cand_raw
+                repaired_fields[field].value = cand_val
+                repaired_fields[field].reason = "accounting_repair"
+                logger.debug(
+                    "  [REPAIR] %s: %s -> %s",
+                    field,
+                    fields.get(field, None) and fields[field].raw_text,
+                    cand_raw,
+                )
+
 
     return repaired_fields
