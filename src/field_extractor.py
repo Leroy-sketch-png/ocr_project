@@ -27,8 +27,9 @@ def compute_match_score(query: str, desc: str) -> float:
     q_tokens = set(q_clean.split())
     d_tokens = set(d_clean.split())
 
-    # Remove stop words that add noise
-    _STOPS = {"and", "or", "the", "of", "for", "in", "net", "total", "other"}
+    # Remove grammatical stop words that add noise.
+    # CRITICAL: Do NOT remove 'net', 'total', 'other' as they are semantically vital in finance.
+    _STOPS = {"and", "or", "the", "of", "for", "in"}
     q_tokens -= _STOPS
     d_tokens -= _STOPS
 
