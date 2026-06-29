@@ -75,59 +75,122 @@ def _is_note_reference_row(description: str, cells: List[str]) -> bool:
     return True
 
 
+def detect_column_boundaries(all_groups_on_page: List[List[Token]], gap_threshold: int = 40) -> List[float]:
+    """
+    Cluster numeric token groups by Right-Edge (X2) to find table columns.
+    Financial tables are typically right-aligned.
+    Returns sorted list of column Right-edges.
+    """
+    if not all_groups_on_page:
+        return []
+        
+    x_edges = []
+    for g in all_groups_on_page:
+        x_edges.append(g[-1].bbox[2])
+        
+    x_edges.sort()
+    
+    clusters = []
+    current_cluster = [x_edges[0]]
+    
+    for x in x_edges[1:]:
+        if x - current_cluster[-1] <= gap_threshold:
+            current_cluster.append(x)
+        else:
+            clusters.append(sum(current_cluster) / len(current_cluster))
+            current_cluster = [x]
+            
+    if current_cluster:
+        clusters.append(sum(current_cluster) / len(current_cluster))
+        
+    return clusters
+
+
 def build_table_rows(text_blocks: List[TextBlock]) -> List[TableRow]:
     """
     Identify lines containing financial data and construct TableRows.
+    Aligns cells into unified columns per page using spatial clustering.
     """
-    rows = []
+    from collections import defaultdict
+    page_blocks = defaultdict(list)
     for block in text_blocks:
-        tokens = block.tokens
-        desc_tokens = []
-        numeric_groups = []
-        current_group = []
-        current_line_tokens_sorted = []
+        page_blocks[block.page].append(block)
 
-        for t in tokens:
-            if is_numeric_token(t.text):
-                if current_group:
-                    prev_t = current_line_tokens_sorted[-1]
-                    # Check X-gap. With 300 DPI, gaps are 3x larger. Use 24 pixels.
-                    gap = t.bbox[0] - prev_t.bbox[2]
-                    if gap > 24:
+    rows = []
+    for page, blocks_on_page in page_blocks.items():
+        page_numeric_groups = []
+        block_numeric_groups = []
+        block_desc_tokens = []
+
+        for block in blocks_on_page:
+            tokens = block.tokens
+            desc_tokens = []
+            numeric_groups = []
+            current_group = []
+            current_line_tokens_sorted = []
+
+            for t in tokens:
+                if is_numeric_token(t.text):
+                    if current_group:
+                        prev_t = current_line_tokens_sorted[-1]
+                        # Check X-gap. With 300 DPI, spaces can be 20-40px.
+                        # Column gaps are typically >150px.
+                        # Use 80 pixels to bridge thousands separators (e.g. '75 427 091')
+                        # but still split distinct columns.
+                        gap = t.bbox[0] - prev_t.bbox[2]
+                        if gap > 80:
+                            numeric_groups.append(current_group)
+                            current_group = []
+                    current_group.append(t)
+                    current_line_tokens_sorted.append(t)
+                else:
+                    if current_group:
                         numeric_groups.append(current_group)
                         current_group = []
-                current_group.append(t)
-                current_line_tokens_sorted.append(t)
-            else:
-                if current_group:
-                    numeric_groups.append(current_group)
-                    current_group = []
-                desc_tokens.append(t)
-                current_line_tokens_sorted.append(t)
+                    desc_tokens.append(t)
+                    current_line_tokens_sorted.append(t)
 
-        if current_group:
-            numeric_groups.append(current_group)
+            if current_group:
+                numeric_groups.append(current_group)
 
-        if not numeric_groups:
-            continue  # not a financial row
+            page_numeric_groups.extend(numeric_groups)
+            block_numeric_groups.append(numeric_groups)
+            block_desc_tokens.append(desc_tokens)
 
-        description = " ".join(t.text for t in desc_tokens).strip()
-        cells = []
-        cell_tokens = []
-        for g in numeric_groups:
-            value_text = " ".join(t.text for t in g)
-            cells.append(value_text)
-            cell_tokens.append(g)
+        col_centers = detect_column_boundaries(page_numeric_groups, 40)
 
-        if _is_note_reference_row(description, cells):
-            continue
+        for block, numeric_groups, desc_tokens in zip(blocks_on_page, block_numeric_groups, block_desc_tokens):
+            if not numeric_groups:
+                continue
 
-        rows.append(
-            TableRow(
-                page=block.page,
-                description=description,
-                cells=cells,
-                cell_tokens=cell_tokens,
+            description = " ".join(t.text for t in desc_tokens).strip()
+            
+            cells = [""] * len(col_centers)
+            cell_tokens = [[] for _ in range(len(col_centers))]
+            
+            for g in numeric_groups:
+                g_edge = g[-1].bbox[2]
+                if col_centers:
+                    closest_col_idx = min(range(len(col_centers)), key=lambda i: abs(col_centers[i] - g_edge))
+                    # Prevent overwriting if multiple groups map to same column
+                    if cells[closest_col_idx]:
+                        cells[closest_col_idx] += " " + " ".join(t.text for t in g)
+                        cell_tokens[closest_col_idx].extend(g)
+                    else:
+                        cells[closest_col_idx] = " ".join(t.text for t in g)
+                        cell_tokens[closest_col_idx] = list(g)
+
+            non_empty_cells = [c for c in cells if c]
+            if _is_note_reference_row(description, non_empty_cells):
+                continue
+
+            rows.append(
+                TableRow(
+                    page=block.page,
+                    description=description,
+                    cells=cells,
+                    cell_tokens=cell_tokens,
+                )
             )
-        )
+
     return rows

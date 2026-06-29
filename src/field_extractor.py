@@ -147,10 +147,51 @@ def _cross_field_collision_check(results: dict) -> dict:
         del results[f]
     return results
 
+def detect_year_column(table_rows: List[TableRow]) -> Dict[int, int]:
+    """
+    Scan all table rows per page for a year-header row (cells containing
+    4-digit years in range 1990-2030). Returns {page: col_idx} mapping
+    for the most recent year column on each page. Forward-fills for pages
+    that continue a table without repeating headers.
+    """
+    page_year_col: Dict[int, int] = {}
+    last_seen_col_idx = None
+    
+    pages = sorted(list(set(row.page for row in table_rows)))
+    
+    for page in pages:
+        year_cells = []
+        numeric_cells = 0
+        for row in [r for r in table_rows if r.page == page]:
+            for col_idx, (cell_text, tokens) in enumerate(zip(row.cells, row.cell_tokens)):
+                clean = cell_text.replace(",", "").replace(" ", "").strip()
+                if any(c.isdigit() for c in clean):
+                    numeric_cells += 1
+                if clean.isdigit() and 1990 <= int(clean) <= 2030 and tokens:
+                    year_cells.append((col_idx, int(clean)))
+            
+            # Strict check: at least 2 years, and they must be the majority of numbers
+            if len(year_cells) >= 2 and len(year_cells) >= numeric_cells - 1:
+                break
+            else:
+                year_cells = []
+                numeric_cells = 0
+        
+        if len(year_cells) >= 2:
+            most_recent_col_idx = max(year_cells, key=lambda x: x[1])[0]
+            page_year_col[page] = most_recent_col_idx
+            last_seen_col_idx = most_recent_col_idx
+        elif last_seen_col_idx is not None:
+            page_year_col[page] = last_seen_col_idx
+            
+    return page_year_col
+
+
 def extract_fields(
     table_rows: List[TableRow],
     text_blocks: List[TextBlock],
     config: Dict[str, Any],
+    year_col_idx_map: Dict[int, int] = None,
 ) -> Dict[str, FieldValue]:
     results = {}
     flat_config = {}
@@ -177,18 +218,22 @@ def extract_fields(
             )
 
             if best_kw_score >= 82:
-                best_cell_idx = 0
-                for idx, cell_text in enumerate(row.cells):
-                    clean_text = (
-                        cell_text.replace(",", "")
-                        .replace(".", "")
-                        .replace(" ", "")
-                        .strip()
-                    )
-                    if idx == 0 and clean_text.isdigit() and len(clean_text) <= 2:
-                        continue
-                    best_cell_idx = idx
-                    break
+                best_cell_idx = None
+                target_col_idx = year_col_idx_map.get(row.page) if year_col_idx_map else None
+                
+                if target_col_idx is not None and target_col_idx < len(row.cells):
+                    if parse_numeric(row.cells[target_col_idx]) is not None:
+                        best_cell_idx = target_col_idx
+                        
+                if best_cell_idx is None:
+                    # T1-2 Fallback: pick rightmost parseable numeric cell
+                    for idx in reversed(range(len(row.cells))):
+                        if parse_numeric(row.cells[idx]) is not None:
+                            best_cell_idx = idx
+                            break
+                            
+                    if best_cell_idx is None:
+                        best_cell_idx = 0
 
                 raw_text = row.cells[best_cell_idx] if row.cells else None
                 val = parse_numeric(raw_text)
