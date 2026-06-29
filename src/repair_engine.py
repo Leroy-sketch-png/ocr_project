@@ -98,16 +98,16 @@ def generate_candidates(raw_text: str) -> List[str]:
 
 
 def _make_field_value(
-    name: str, val: float, raw_text: str, token: Token, reason: str
+    name: str, val: float, raw_text: str, token: Optional[Token], reason: str
 ) -> FieldValue:
     """Helper to create a FieldValue from an inverse-search result."""
     return FieldValue(
         name=name,
         value=val,
         raw_text=raw_text,
-        page=token.page,
-        tokens=[token],
-        bbox=token.bbox,
+        page=token.page if token else None,
+        tokens=[token] if token else [],
+        bbox=token.bbox if token else None,
         valid=True,
         reason=reason,
     )
@@ -243,6 +243,28 @@ def apply_math_repairs(
                                 )
                                 found_match = True
                                 break
+                        
+                        if not found_match:
+                            if missing in repaired_fields:
+                                fv = repaired_fields[missing]
+                                fv.value = expected_val
+                                fv.raw_text = str(int(expected_val)) if expected_val.is_integer() else str(expected_val)
+                                fv.reason = "inferred_implicit_sum"
+                            else:
+                                repaired_fields[missing] = _make_field_value(
+                                    missing,
+                                    expected_val,
+                                    str(int(expected_val)) if expected_val.is_integer() else str(expected_val),
+                                    None,
+                                    "inferred_implicit_sum",
+                                )
+                            for s, (raw, val) in zip(other_suspects, cand_combo):
+                                if repaired_fields[s].value != val:
+                                    repaired_fields[s].value = val
+                                    repaired_fields[s].raw_text = raw
+                                    repaired_fields[s].reason = "inverse_search_combinatorial_implicit"
+                            found_match = True
+                            
                         if found_match:
                             break
 

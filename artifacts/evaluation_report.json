@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-06-29T14:28:26",
+  "generated_at": "2026-06-29T14:47:02",
   "overall": {
     "total_expected": 53,
-    "total_extracted": 52,
-    "total_correct": 48,
-    "precision": 92.31,
-    "recall": 90.57,
-    "f1": 91.43
+    "total_extracted": 53,
+    "total_correct": 46,
+    "precision": 86.79,
+    "recall": 86.79,
+    "f1": 86.79
   },
   "samples": [
     {
@@ -49,7 +49,7 @@
       "precision": 94.44,
       "recall": 94.44,
       "f1": 94.44,
-      "error": "Review the following fields: Gross Profit/Loss",
+      "error": null,
       "mismatches": [
         {
           "field": "Net Profit/Loss",
@@ -76,6 +76,7 @@
         "Current Liabilities",
         "Total Liabilities",
         "Auditor's Opinion",
+        "Gross Profit/Loss",
         "Non-Current Liabilities"
       ]
     },
@@ -83,13 +84,25 @@
       "sample": "sample3",
       "pdf": "AA_SAMPLE3.pdf",
       "total_expected": 18,
-      "total_extracted": 17,
-      "total_correct": 14,
-      "precision": 82.35,
-      "recall": 77.78,
-      "f1": 80.0,
-      "error": "Review the following fields: Operating Profit/Loss, Non-Current Assets",
+      "total_extracted": 18,
+      "total_correct": 12,
+      "precision": 66.67,
+      "recall": 66.67,
+      "f1": 66.67,
+      "error": "Review the following fields: Operating Profit/Loss",
       "mismatches": [
+        {
+          "field": "Trade Receivables",
+          "expected": 74677.0,
+          "extracted": 113718.0,
+          "raw_text": "113,718"
+        },
+        {
+          "field": "Current Assets",
+          "expected": 1444515.0,
+          "extracted": 1483556.0,
+          "raw_text": "1483556"
+        },
         {
           "field": "Plant and Equipment",
           "expected": 1.0,
@@ -99,8 +112,8 @@
         {
           "field": "Non-Current Assets",
           "expected": 5596.0,
-          "extracted": null,
-          "raw_text": null
+          "extracted": -33445.0,
+          "raw_text": "-33445"
         },
         {
           "field": "Current Liabilities",
@@ -132,7 +145,8 @@
         "Plant and Equipment",
         "Non-Current Liabilities",
         "Auditor's Opinion",
-        "Current Assets"
+        "Current Assets",
+        "Non-Current Assets"
       ]
     }
   ]
