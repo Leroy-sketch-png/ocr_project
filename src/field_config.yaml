@@ -26,11 +26,13 @@ Assets:
       - "Property, plant and equipment"
       - "Property, Plant and Equipment"
       - "PP&E"
+      - "Plant, property and equipment"
       - "Tangible fixed assets"
       - "Tangible Total Fixtures"
       - "Fixtures and fittings"
       - "Machinery and equipment"
       - "Plant, machinery and equipment"
+      - "Right-of-use assets"
   Trade Receivables:
     keywords:
       - "Trade Receivables"
@@ -76,3 +78,4 @@ Auditor:
       - "Independent Auditor's Report"
       - "Basis for Opinion"
       - "Key Audit Matters"
+      - "Emphasis of Matter"
