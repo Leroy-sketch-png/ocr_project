@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .exporter import field_value_to_dict
-from .field_extractor import extract_fields, load_field_config
+from .field_extractor import extract_fields, load_field_config, detect_year_column
 from .image_processor import preprocess_image
 from .io_loader import load_document
 from .ocr_engine import get_ocr_engine
@@ -68,7 +68,8 @@ def process_file(
         if isinstance(fields, dict):
             required_fields.extend(fields.keys())
 
-    field_values = extract_fields(table_rows, blocks, field_defs)
+    year_col_x_map = detect_year_column(table_rows)
+    field_values = extract_fields(table_rows, blocks, field_defs, year_col_x_map)
     parse_numeric_fields(field_values)
 
     # Apply Mathematical Repair Engine (Math constraints + Targeted OCR).
