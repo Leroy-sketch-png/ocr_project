@@ -7,3 +7,7 @@ debug_output.txt
 .venv/
 sample*.json
 sample*dump.txt
+
+# Evaluation reports — regenerated every run, not source of truth
+artifacts/evaluation_report.json
+artifacts/evaluation_report.md
