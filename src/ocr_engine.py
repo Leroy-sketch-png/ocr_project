@@ -4,7 +4,6 @@ from typing import Any, Dict, List
 import pytesseract  # type: ignore
 from pytesseract import Output  # type: ignore
 
-from .image_processor import preprocess_image
 from .models import Token
 from .runtime_config import get_tesseract_cmd
 
@@ -35,8 +34,8 @@ class TesseractEngine(OCREngine):
     """
 
     def recognize_page(self, pil_image: Any, page: int) -> List[Token]:
-        # pil_image is already preprocessed by the caller — do NOT call
-        # preprocess_image() here again.
+        # pil_image is already preprocessed by the caller — do NOT
+        # preprocess it again inside this method. See main.py for caching logic.
         data = pytesseract.image_to_data(pil_image, output_type=Output.DICT)
         tokens = []
         n = len(data["text"])
