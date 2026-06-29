@@ -30,10 +30,10 @@ def compute_match_score(query: str, desc: str) -> float:
     extra_words = len(d_tokens) - len(intersection)
 
     if recall == 1.0:
-        score = 100 - (extra_words * 10)
+        score = 100 - (extra_words * 2)
         return max(score, fuzz.ratio(query.lower(), desc.lower()))
     elif recall >= 0.5:
-        score = (recall * 100) - (extra_words * 10)
+        score = (recall * 100) - (extra_words * 5)
         return max(score, fuzz.ratio(query.lower(), desc.lower()))
 
     return fuzz.ratio(query.lower(), desc.lower())
@@ -69,6 +69,8 @@ def normalize_auditor_opinion(text: str) -> Optional[str]:
     if "qualified opinion" in text_lower:
         return "Qualified"
     if "unqualified opinion" in text_lower or "unmodified opinion" in text_lower:
+        return "Unqualified"
+    if "in our opinion, the accompanying financial statements" in text_lower:
         return "Unqualified"
     return None
 
@@ -123,7 +125,14 @@ def extract_fields(
                 should_update = False
 
                 if best_kw_score > current_best_score:
-                    should_update = True
+                    if val == 0.0 and field_name in results and best_kw_score - current_best_score < 5:
+                        existing_val = parse_numeric(results[field_name].raw_text)
+                        if existing_val is not None and abs(existing_val) > 0:
+                            should_update = False
+                        else:
+                            should_update = True
+                    else:
+                        should_update = True
                 elif best_kw_score == current_best_score:
                     if val is not None:
                         if field_name in results:
@@ -192,7 +201,8 @@ def extract_fields(
                     reason=None if opinion_value is not None else "opinion_parse_error",
                     field_label="Auditor's Opinion",
                 )
-                found_opinion = True
-                break
+                if opinion_value is not None:
+                    found_opinion = True
+                    break
 
     return results

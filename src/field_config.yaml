@@ -6,7 +6,7 @@ ProfitAndLoss:
   Profit/Loss Before Tax:
     keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Operating result before tax", "Profit/(loss) before tax"]
   Net Profit/Loss:
-    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year"]
+    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss"]
   Operating Profit/Loss:
     keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)"]
   Cost of Sales:
@@ -61,9 +61,9 @@ Equity:
   Paid Up Capital:
     keywords: ["Paid Up Capital", "Share Capital", "Issued capital", "Ordinary shares"]
   Retained Earnings:
-    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)"]
+    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)", "Other equity"]
   Total Equity:
-    keywords: ["Total Equity", "Total Shareholders' Equity", "Total equity", "Equity attributable to owners"]
+    keywords: ["Total Equity", "Total Shareholders' Equity", "Total equity", "Equity attributable to owners", "Equity attributable to owner"]
 
 Auditor:
   Auditor's Opinion:

@@ -5,3 +5,5 @@ __pycache__/
 *.pdf
 debug_output.txt
 .venv/
+sample*.json
+sample*dump.txt
