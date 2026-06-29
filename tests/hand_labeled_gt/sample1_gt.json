@@ -2,15 +2,20 @@
   "Revenue": 40580.0,
   "Cost of Sales": -16885.0,
   "Gross Profit/Loss": 23695.0,
+  "Operating Profit/Loss": null,
   "Profit/Loss Before Tax": -87557.0,
   "Net Profit/Loss": -87557.0,
   "Cash and Cash Equivalents": 18742.0,
   "Trade Receivables": 20444.0,
   "Current Assets": 39186.0,
+  "Plant and Equipment": null,
   "Non-Current Assets": 0.0,
   "Total Assets": 39186.0,
   "Current Liabilities": 27276.0,
   "Non-Current Liabilities": 0.0,
   "Total Liabilities": 27276.0,
-  "Total Equity": 11910.0
+  "Paid Up Capital": 350000.0,
+  "Retained Earnings": -374090.0,
+  "Total Equity": 11910.0,
+  "Auditor's Opinion": "Unqualified"
 }

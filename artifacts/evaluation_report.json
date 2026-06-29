@@ -1,23 +1,23 @@
 {
-  "generated_at": "2026-06-29T13:01:32",
+  "generated_at": "2026-06-29T13:44:22",
   "overall": {
-    "total_expected": 48,
-    "total_extracted": 43,
-    "total_correct": 42,
-    "precision": 97.67,
-    "recall": 87.5,
-    "f1": 92.31
+    "total_expected": 53,
+    "total_extracted": 47,
+    "total_correct": 45,
+    "precision": 95.74,
+    "recall": 84.91,
+    "f1": 90.0
   },
   "samples": [
     {
       "sample": "sample1",
       "pdf": "AA_SAMPLE1.pdf",
-      "total_expected": 14,
-      "total_extracted": 12,
-      "total_correct": 12,
+      "total_expected": 17,
+      "total_extracted": 15,
+      "total_correct": 15,
       "precision": 100.0,
-      "recall": 85.71,
-      "f1": 92.31,
+      "recall": 88.24,
+      "f1": 93.75,
       "error": "Review the following fields: Operating Profit/Loss, Plant and Equipment, Current Liabilities, Non-Current Liabilities",
       "mismatches": [
         {
@@ -54,14 +54,27 @@
     {
       "sample": "sample2",
       "pdf": "AA_SAMPLE2.pdf",
-      "total_expected": 17,
+      "total_expected": 18,
       "total_extracted": 17,
-      "total_correct": 17,
-      "precision": 100.0,
-      "recall": 100.0,
-      "f1": 100.0,
+      "total_correct": 16,
+      "precision": 94.12,
+      "recall": 88.89,
+      "f1": 91.43,
       "error": "Review the following fields: Gross Profit/Loss, Auditor's Opinion",
-      "mismatches": [],
+      "mismatches": [
+        {
+          "field": "Non-Current Liabilities",
+          "expected": 0.0,
+          "extracted": 24864056.0,
+          "raw_text": "24 864 056"
+        },
+        {
+          "field": "Auditor's Opinion",
+          "expected": "Unqualified",
+          "extracted": null,
+          "raw_text": null
+        }
+      ],
       "output_fields": [
         "Revenue",
         "Cost of Sales",
@@ -85,12 +98,12 @@
     {
       "sample": "sample3",
       "pdf": "AA_SAMPLE3.pdf",
-      "total_expected": 17,
-      "total_extracted": 14,
-      "total_correct": 13,
-      "precision": 92.86,
-      "recall": 76.47,
-      "f1": 83.87,
+      "total_expected": 18,
+      "total_extracted": 15,
+      "total_correct": 14,
+      "precision": 93.33,
+      "recall": 77.78,
+      "f1": 84.85,
       "error": "Review the following fields: Operating Profit/Loss, Non-Current Assets, Current Liabilities, Non-Current Liabilities",
       "mismatches": [
         {
@@ -101,7 +114,7 @@
         },
         {
           "field": "Non-Current Assets",
-          "expected": 5596.0,
+          "expected": 887.0,
           "extracted": null,
           "raw_text": null
         },
