@@ -22,12 +22,15 @@ Assets:
   Plant and Equipment:
     keywords:
       - "Plant and Equipment"
-      - "property plant and equipment"
-      - "property, plant and equipment"
+      - "Property Plant and Equipment"
+      - "Property, plant and equipment"
       - "PP&E"
       - "plant and machinery"
       - "plant equipment"
-      - "fixed assets"
+      - "Tangible fixed assets"
+      - "Fixtures and fittings"
+      - "Machinery and equipment"
+      - "Plant, machinery and equipment"
   Trade Receivables:
     keywords:
       - "Trade Receivables"

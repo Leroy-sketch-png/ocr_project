@@ -34,11 +34,11 @@ def compute_match_score(query: str, desc: str) -> float:
     d_tokens -= _STOPS
 
     if not q_tokens or not d_tokens:
-        return fuzz.ratio(query.lower(), desc.lower())
+        return fuzz.ratio(q_clean, d_clean)
 
     intersection = q_tokens.intersection(d_tokens)
     if not intersection:
-        return fuzz.ratio(query.lower(), desc.lower())
+        return fuzz.ratio(q_clean, d_clean)
 
     recall = len(intersection) / len(q_tokens)  # how much of query is covered
     extra_words = len(d_tokens) - len(intersection)  # words in desc not in query
@@ -51,13 +51,13 @@ def compute_match_score(query: str, desc: str) -> float:
         # Small penalty only if description is 3x longer than query (very different)
         if extra_words > len(q_tokens) * 2:
             base -= 5.0
-        return max(base, fuzz.ratio(query.lower(), desc.lower()))
+        return max(base, fuzz.ratio(q_clean, d_clean))
     elif recall >= 0.5:
         # Partial overlap — keep a small extra-word penalty but don't kill the score
         score = (recall * 90) - (extra_words * 5)
-        return max(score, fuzz.ratio(query.lower(), desc.lower()))
+        return max(score, fuzz.ratio(q_clean, d_clean))
 
-    return fuzz.ratio(query.lower(), desc.lower())
+    return fuzz.ratio(q_clean, d_clean)
 
 
 def load_field_config(path: str) -> Dict[str, Any]:

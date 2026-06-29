@@ -1,52 +1,48 @@
 # Evaluation Report
 
-Generated: 2026-06-25T08:03:01
+Generated: 2026-06-29T13:01:32
 
 ## Overall
 - Expected fields: 48
-- Extracted fields: 40
-- Correct fields: 39
-- Precision: 97.50%
-- Recall: 81.25%
-- F1: 88.64%
+- Extracted fields: 43
+- Correct fields: 42
+- Precision: 97.67%
+- Recall: 87.50%
+- F1: 92.31%
 
 ## sample1
 - PDF: `AA_SAMPLE1.pdf`
 - Precision: 100.00%
-- Recall: 78.57%
-- F1: 88.00%
+- Recall: 85.71%
+- F1: 92.31%
 - Expected fields: 14
-- Extracted fields: 11
-- Correct fields: 11
-- Error: Review the following fields: Net Profit/Loss, Operating Profit/Loss, Plant and Equipment, Current Liabilities, Non-Current Liabilities
+- Extracted fields: 12
+- Correct fields: 12
+- Error: Review the following fields: Operating Profit/Loss, Plant and Equipment, Current Liabilities, Non-Current Liabilities
 - Mismatches:
-  - Net Profit/Loss: expected `-87557.0` got `None`
   - Current Liabilities: expected `27276.0` got `None`
   - Non-Current Liabilities: expected `0.0` got `None`
 
 ## sample2
 - PDF: `AA_SAMPLE2.pdf`
 - Precision: 100.00%
-- Recall: 94.12%
-- F1: 96.97%
+- Recall: 100.00%
+- F1: 100.00%
 - Expected fields: 17
-- Extracted fields: 16
-- Correct fields: 16
-- Error: Review the following fields: Gross Profit/Loss, Retained Earnings, Auditor's Opinion
-- Mismatches:
-  - Retained Earnings: expected `48008912.0` got `None`
+- Extracted fields: 17
+- Correct fields: 17
+- Error: Review the following fields: Gross Profit/Loss, Auditor's Opinion
 
 ## sample3
 - PDF: `AA_SAMPLE3.pdf`
-- Precision: 92.31%
-- Recall: 70.59%
-- F1: 80.00%
+- Precision: 92.86%
+- Recall: 76.47%
+- F1: 83.87%
 - Expected fields: 17
-- Extracted fields: 13
-- Correct fields: 12
-- Error: Review the following fields: Net Profit/Loss, Operating Profit/Loss, Non-Current Assets, Current Liabilities, Non-Current Liabilities, Auditor's Opinion
+- Extracted fields: 14
+- Correct fields: 13
+- Error: Review the following fields: Operating Profit/Loss, Non-Current Assets, Current Liabilities, Non-Current Liabilities
 - Mismatches:
-  - Net Profit/Loss: expected `248084.0` got `None`
   - Plant and Equipment: expected `1.0` got `3.0`
   - Non-Current Assets: expected `5596.0` got `None`
   - Current Liabilities: expected `818988.0` got `None`
