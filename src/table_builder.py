@@ -43,6 +43,38 @@ def is_numeric_token(text: str) -> bool:
     return bool(re.match(r"^[\d,().\-]+$", text))
 
 
+def _is_note_reference_row(description: str, cells: List[str]) -> bool:
+    """
+    Returns True if this row looks like a footnote/note reference row
+    rather than a financial data row.
+    General signal: single numeric cell with value <= 30 and no currency
+    context in the description.
+    """
+    if len(cells) != 1:
+        return False
+        
+    val_str = cells[0].replace(",", "").replace(" ", "").strip()
+    
+    # Check if the string is numeric (including decimals)
+    if not val_str.replace(".", "", 1).isdigit():
+        return False
+        
+    try:
+        val_float = float(val_str)
+        if val_float > 30:
+            return False
+    except ValueError:
+        return False
+        
+    # If the description has financial magnitude words, it's real data
+    financial_signals = ["total", "net", "gross", "profit", "loss", "assets",
+                         "liabilities", "equity", "revenue", "capital"]
+    desc_lower = description.lower()
+    if any(sig in desc_lower for sig in financial_signals):
+        return False
+    return True
+
+
 def build_table_rows(text_blocks: List[TextBlock]) -> List[TableRow]:
     """
     Identify lines containing financial data and construct TableRows.
@@ -86,6 +118,9 @@ def build_table_rows(text_blocks: List[TextBlock]) -> List[TableRow]:
             value_text = " ".join(t.text for t in g)
             cells.append(value_text)
             cell_tokens.append(g)
+
+        if _is_note_reference_row(description, cells):
+            continue
 
         rows.append(
             TableRow(

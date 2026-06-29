@@ -1,38 +1,25 @@
 {
-  "generated_at": "2026-06-29T13:44:22",
+  "generated_at": "2026-06-29T14:28:26",
   "overall": {
     "total_expected": 53,
-    "total_extracted": 47,
-    "total_correct": 45,
-    "precision": 95.74,
-    "recall": 84.91,
-    "f1": 90.0
+    "total_extracted": 52,
+    "total_correct": 48,
+    "precision": 92.31,
+    "recall": 90.57,
+    "f1": 91.43
   },
   "samples": [
     {
       "sample": "sample1",
       "pdf": "AA_SAMPLE1.pdf",
       "total_expected": 17,
-      "total_extracted": 15,
-      "total_correct": 15,
+      "total_extracted": 17,
+      "total_correct": 17,
       "precision": 100.0,
-      "recall": 88.24,
-      "f1": 93.75,
-      "error": "Review the following fields: Operating Profit/Loss, Plant and Equipment, Current Liabilities, Non-Current Liabilities",
-      "mismatches": [
-        {
-          "field": "Current Liabilities",
-          "expected": 27276.0,
-          "extracted": null,
-          "raw_text": null
-        },
-        {
-          "field": "Non-Current Liabilities",
-          "expected": 0.0,
-          "extracted": null,
-          "raw_text": null
-        }
-      ],
+      "recall": 100.0,
+      "f1": 100.0,
+      "error": "Review the following fields: Operating Profit/Loss, Plant and Equipment",
+      "mismatches": [],
       "output_fields": [
         "Revenue",
         "Cost of Sales",
@@ -41,6 +28,7 @@
         "Net Profit/Loss",
         "Cash and Cash Equivalents",
         "Trade Receivables",
+        "Current Liabilities",
         "Total Assets",
         "Total Liabilities",
         "Paid Up Capital",
@@ -48,31 +36,26 @@
         "Total Equity",
         "Auditor's Opinion",
         "Current Assets",
-        "Non-Current Assets"
+        "Non-Current Assets",
+        "Non-Current Liabilities"
       ]
     },
     {
       "sample": "sample2",
       "pdf": "AA_SAMPLE2.pdf",
       "total_expected": 18,
-      "total_extracted": 17,
-      "total_correct": 16,
-      "precision": 94.12,
-      "recall": 88.89,
-      "f1": 91.43,
-      "error": "Review the following fields: Gross Profit/Loss, Auditor's Opinion",
+      "total_extracted": 18,
+      "total_correct": 17,
+      "precision": 94.44,
+      "recall": 94.44,
+      "f1": 94.44,
+      "error": "Review the following fields: Gross Profit/Loss",
       "mismatches": [
         {
-          "field": "Non-Current Liabilities",
-          "expected": 0.0,
-          "extracted": 24864056.0,
-          "raw_text": "24 864 056"
-        },
-        {
-          "field": "Auditor's Opinion",
-          "expected": "Unqualified",
-          "extracted": null,
-          "raw_text": null
+          "field": "Net Profit/Loss",
+          "expected": 9915794.0,
+          "extracted": 0.0,
+          "raw_text": "0"
         }
       ],
       "output_fields": [
@@ -91,49 +74,51 @@
         "Paid Up Capital",
         "Total Equity",
         "Current Liabilities",
-        "Non-Current Liabilities",
-        "Total Liabilities"
+        "Total Liabilities",
+        "Auditor's Opinion",
+        "Non-Current Liabilities"
       ]
     },
     {
       "sample": "sample3",
       "pdf": "AA_SAMPLE3.pdf",
       "total_expected": 18,
-      "total_extracted": 15,
+      "total_extracted": 17,
       "total_correct": 14,
-      "precision": 93.33,
+      "precision": 82.35,
       "recall": 77.78,
-      "f1": 84.85,
-      "error": "Review the following fields: Operating Profit/Loss, Non-Current Assets, Current Liabilities, Non-Current Liabilities",
+      "f1": 80.0,
+      "error": "Review the following fields: Operating Profit/Loss, Non-Current Assets",
       "mismatches": [
         {
           "field": "Plant and Equipment",
           "expected": 1.0,
-          "extracted": 3.0,
-          "raw_text": "3."
+          "extracted": 147.0,
+          "raw_text": "147"
         },
         {
           "field": "Non-Current Assets",
-          "expected": 887.0,
+          "expected": 5596.0,
           "extracted": null,
           "raw_text": null
         },
         {
           "field": "Current Liabilities",
           "expected": 818988.0,
-          "extracted": null,
-          "raw_text": null
+          "extracted": 251676.0,
+          "raw_text": "251,676"
         },
         {
           "field": "Non-Current Liabilities",
           "expected": 1463.0,
-          "extracted": null,
-          "raw_text": null
+          "extracted": 779.0,
+          "raw_text": "779"
         }
       ],
       "output_fields": [
         "Retained Earnings",
         "Trade Receivables",
+        "Current Liabilities",
         "Cash and Cash Equivalents",
         "Total Assets",
         "Total Liabilities",
@@ -145,6 +130,7 @@
         "Profit/Loss Before Tax",
         "Net Profit/Loss",
         "Plant and Equipment",
+        "Non-Current Liabilities",
         "Auditor's Opinion",
         "Current Assets"
       ]

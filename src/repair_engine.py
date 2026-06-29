@@ -181,6 +181,27 @@ def apply_math_repairs(
                             )
                             expected_val = target_val - other_summands_sum
 
+                        if abs(expected_val) < _RESIDUAL_TOLERANCE:
+                            # The missing field is mathematically zero — no token will match.
+                            # Create a synthetic FieldValue with reason="inferred_zero_from_equation".
+                            if missing in repaired_fields:
+                                repaired_fields[missing].value = 0.0
+                                repaired_fields[missing].raw_text = "0"
+                                repaired_fields[missing].reason = "inferred_zero_from_equation"
+                            else:
+                                repaired_fields[missing] = FieldValue(
+                                    name=missing,
+                                    value=0.0,
+                                    raw_text="0",
+                                    page=None,
+                                    tokens=[],
+                                    bbox=None,
+                                    valid=True,
+                                    reason="inferred_zero_from_equation",
+                                )
+                            found_match = True
+                            break
+
                         found_match = False
                         for token in all_tokens:
                             cand_val = parse_numeric(token.text)

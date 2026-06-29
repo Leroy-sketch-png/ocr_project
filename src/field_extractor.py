@@ -89,7 +89,7 @@ def normalize_auditor_opinion(text: str) -> Optional[str]:
     t = text.lower()
 
     # Check for disclaimer first (most specific — a disclaimer IS NOT a qualified)
-    if "disclaim" in t:
+    if "disclaimer of opinion" in t or ("disclaim" in t and "opinion" in t):
         return "Disclaimer"
 
     # Adverse opinion
@@ -118,6 +118,34 @@ def normalize_auditor_opinion(text: str) -> Optional[str]:
 
     return None
 
+
+def _cross_field_collision_check(results: dict) -> dict:
+    """
+    If the same value AND same page AND same bbox are assigned to two different
+    fields, the lower-scoring one is a collision and should be nulled out.
+    This is general: in a real financial statement, the same table cell cannot
+    be both Current Liabilities and Non-Current Liabilities.
+    """
+    seen = {}  # (page, bbox) -> (field_name, score)
+    to_null = []
+    for field_name, fv in results.items():
+        if fv is None or fv.raw_text is None:
+            continue
+        key = (fv.page, fv.raw_text)  # same page + same raw text = same cell
+        if key in seen:
+            # Keep the field whose name more closely matches "current" vs "non-current"
+            # Actually: just null the one that is semantically inconsistent.
+            # Non-Current should never share a value with Current at the same hierarchy.
+            existing_field = seen[key]
+            if "Non-Current" in field_name and "Non-Current" not in existing_field:
+                to_null.append(field_name)
+            elif "Non-Current" in existing_field and "Non-Current" not in field_name:
+                to_null.append(existing_field)
+        else:
+            seen[key] = field_name
+    for f in to_null:
+        del results[f]
+    return results
 
 def extract_fields(
     table_rows: List[TableRow],
@@ -169,14 +197,7 @@ def extract_fields(
                 should_update = False
 
                 if best_kw_score > current_best_score:
-                    if val == 0.0 and field_name in results and best_kw_score - current_best_score < 5:
-                        existing_val = parse_numeric(results[field_name].raw_text)
-                        if existing_val is not None and abs(existing_val) > 0:
-                            should_update = False
-                        else:
-                            should_update = True
-                    else:
-                        should_update = True
+                    should_update = True
                 elif best_kw_score == current_best_score:
                     if val is not None:
                         if field_name in results:
@@ -233,6 +254,16 @@ def extract_fields(
                 if opinion_value is None:
                     # keyword present but opinion type not determinable from this block — skip
                     continue
+                
+                first_line = []
+                for tok in block.tokens:
+                    if first_line and tok.bbox[0] - first_line[-1].bbox[2] > 100:
+                        break
+                    if len(first_line) >= 8:
+                        break
+                    first_line.append(tok)
+                field_label_text = " ".join(t.text for t in first_line) if first_line else kw
+
                 results["Auditor's Opinion"] = FieldValue(
                     name="Auditor's Opinion",
                     value=opinion_value,
@@ -242,9 +273,38 @@ def extract_fields(
                     bbox=compute_bbox(block.tokens),
                     valid=True,
                     reason=None,
-                    field_label=" ".join(t.text for t in block.tokens[:12]),
+                    field_label=field_label_text,
                 )
                 found_opinion = True
                 break
 
+    if not found_opinion:
+        for block in text_blocks:
+            text_lower = " ".join(t.text for t in block.tokens).lower()
+            opinion_value = normalize_auditor_opinion(text_lower)
+            if opinion_value is not None:
+                first_line = []
+                for tok in block.tokens:
+                    if first_line and tok.bbox[0] - first_line[-1].bbox[2] > 100:
+                        break
+                    if len(first_line) >= 8:
+                        break
+                    first_line.append(tok)
+                field_label_text = " ".join(t.text for t in first_line) if first_line else opinion_value
+
+                results["Auditor's Opinion"] = FieldValue(
+                    name="Auditor's Opinion",
+                    value=opinion_value,
+                    raw_text=text_lower[:80],   # first 80 chars as evidence
+                    page=block.page,
+                    tokens=block.tokens,
+                    bbox=compute_bbox(block.tokens),
+                    valid=True,
+                    reason="full_text_fallback",
+                    field_label=field_label_text,
+                )
+                found_opinion = True
+                break
+
+    results = _cross_field_collision_check(results)
     return results
