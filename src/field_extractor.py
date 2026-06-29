@@ -5,6 +5,7 @@ import yaml
 from thefuzz import fuzz
 
 from .models import FieldValue, TableRow, TextBlock, Token
+from .value_parser import parse_numeric
 
 
 def compute_match_score(query: str, desc: str) -> float:
@@ -29,11 +30,9 @@ def compute_match_score(query: str, desc: str) -> float:
     extra_words = len(d_tokens) - len(intersection)
 
     if recall == 1.0:
-        # Full overlap: prioritize exact matches with no extra words.
         score = 100 - (extra_words * 10)
         return max(score, fuzz.ratio(query.lower(), desc.lower()))
     elif recall >= 0.5:
-        # Partial overlap (e.g., matching "receivables")
         score = (recall * 100) - (extra_words * 10)
         return max(score, fuzz.ratio(query.lower(), desc.lower()))
 
@@ -89,7 +88,7 @@ def extract_fields(
             if isinstance(details, dict):
                 flat_config[field_name] = details.get("keywords", [])
 
-    # To track the highest scoring row per field
+    # Track the highest scoring row per field
     best_scores = {k: -1.0 for k in flat_config.keys()}
 
     # Extract numeric fields
@@ -99,7 +98,6 @@ def extract_fields(
             if field_name == "Auditor's Opinion":
                 continue  # Handled separately
 
-            # Find best match score among keywords
             best_kw_score = max(
                 (compute_match_score(kw, desc_lower) for kw in keywords), default=0.0
             )
@@ -119,13 +117,8 @@ def extract_fields(
                     break
 
                 raw_text = row.cells[best_cell_idx] if row.cells else None
-                from .value_parser import parse_numeric
-
                 val = parse_numeric(raw_text)
 
-                # Disambiguation logic:
-                # If we have a new score that is strictly greater than the old score, take it.
-                # If the score is the same (e.g. perfect match), prefer the one with the larger absolute value.
                 current_best_score = best_scores[field_name]
                 should_update = False
 
@@ -133,7 +126,6 @@ def extract_fields(
                     should_update = True
                 elif best_kw_score == current_best_score:
                     if val is not None:
-                        # Same score, check if value is larger
                         if field_name in results:
                             existing_val = parse_numeric(results[field_name].raw_text)
                             if existing_val is not None:
@@ -142,7 +134,6 @@ def extract_fields(
                             else:
                                 should_update = True
 
-                    # Also accumulate row candidates from this tied row into the existing field
                     if field_name in results and not should_update:
                         for cell_text in row.cells:
                             cval = parse_numeric(cell_text)
@@ -157,7 +148,6 @@ def extract_fields(
                         row.cell_tokens[best_cell_idx] if row.cell_tokens else []
                     )
 
-                    # Store all parsed numeric cells from this row as candidates for the repair engine
                     row_cands = []
                     for cell_text in row.cells:
                         cval = parse_numeric(cell_text)
@@ -174,11 +164,17 @@ def extract_fields(
                         valid=False,
                         reason=None,
                         row_candidates=row_cands,
+                        field_label=row.description,
                     )
 
     # Extract Auditor's Opinion
+    # The outer loop must break as soon as a valid opinion is found so that
+    # a later, possibly lower-quality block cannot overwrite an already-correct result.
     auditor_kws = flat_config.get("Auditor's Opinion", [])
+    found_opinion = False
     for block in text_blocks:
+        if found_opinion:
+            break
         text_lower = " ".join(t.text for t in block.tokens).lower()
         for kw in auditor_kws:
             if kw.lower() in text_lower:
@@ -188,13 +184,15 @@ def extract_fields(
                 results["Auditor's Opinion"] = FieldValue(
                     name="Auditor's Opinion",
                     value=opinion_value,
-                    raw_text=kw,  # Use the keyword found as standard text
+                    raw_text=kw,
                     page=block.page,
                     tokens=block.tokens,
                     bbox=compute_bbox(block.tokens),
                     valid=opinion_value is not None,
                     reason=None if opinion_value is not None else "opinion_parse_error",
+                    field_label="Auditor's Opinion",
                 )
+                found_opinion = True
                 break
 
     return results

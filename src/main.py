@@ -42,9 +42,16 @@ def process_file(
 
     ocr_engine = get_ocr_engine(engine_name)
 
+    # Preprocess each page once and cache the result.
+    # The cached image is reused by both the OCR engine and the repair engine,
+    # avoiding a second preprocessing pass on the same page.
+    processed_images: Dict[int, Any] = {
+        page_idx: preprocess_image(pil_img) for page_idx, pil_img in doc.pages
+    }
+
     all_tokens = []
-    for page_idx, pil_image in doc.pages:
-        page_tokens = ocr_engine.recognize_page(pil_image, page_idx)
+    for page_idx, processed_img in processed_images.items():
+        page_tokens = ocr_engine.recognize_page(processed_img, page_idx)
         all_tokens.extend(page_tokens)
 
     if is_ocr_failure(all_tokens):
@@ -64,11 +71,8 @@ def process_file(
     field_values = extract_fields(table_rows, blocks, field_defs)
     parse_numeric_fields(field_values)
 
-    # V6: Apply Mathematical Repair Engine (Math constraints + Targeted OCR)
-    # We pass the original preprocessed images to the repair engine for targeted cell OCR.
-    processed_images = {
-        page_idx: preprocess_image(pil_img) for page_idx, pil_img in doc.pages
-    }
+    # Apply Mathematical Repair Engine (Math constraints + Targeted OCR).
+    # Passes the already-cached processed_images — no re-preprocessing.
     field_values = apply_math_repairs(
         field_values,
         processed_images,
@@ -112,7 +116,6 @@ def main() -> None:
         action="store_true",
         help="Enable Constraint-Guided Optimization",
     )
-    # Backwards compatibility: bind --extreme silently to optimization_mode
     parser.add_argument(
         "--extreme",
         dest="optimize",

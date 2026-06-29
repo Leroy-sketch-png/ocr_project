@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, List
+from typing import Any, Dict, List
 
 import pytesseract  # type: ignore
 from pytesseract import Output  # type: ignore
@@ -21,16 +21,23 @@ class OCREngine(ABC):
 
     @abstractmethod
     def recognize_page(self, pil_image: Any, page: int) -> List[Token]:
-        """Recognize text on a given page."""
+        """Recognize text on a given page image (already preprocessed)."""
         pass
 
 
 class TesseractEngine(OCREngine):
-    """Tesseract implementation of OCREngine."""
+    """Tesseract implementation of OCREngine.
+
+    NOTE: ``recognize_page`` expects a *preprocessed* image (numpy array or PIL
+    image) produced by ``image_processor.preprocess_image``.  The caller in
+    ``main.py`` is responsible for preprocessing and caching the image once per
+    page so that this method never repeats the preprocessing pipeline.
+    """
 
     def recognize_page(self, pil_image: Any, page: int) -> List[Token]:
-        processed_image = preprocess_image(pil_image)
-        data = pytesseract.image_to_data(processed_image, output_type=Output.DICT)
+        # pil_image is already preprocessed by the caller — do NOT call
+        # preprocess_image() here again.
+        data = pytesseract.image_to_data(pil_image, output_type=Output.DICT)
         tokens = []
         n = len(data["text"])
         for i in range(n):
@@ -68,7 +75,6 @@ class PaddleEngine(OCREngine):
         # Suppress verbose paddleocr logging
         logging.getLogger("ppocr").setLevel(logging.ERROR)
 
-        # Initialize PaddleOCR engine
         self.ocr = PaddleOCR(use_textline_orientation=True, lang="en")
 
     def recognize_page(self, pil_image: Any, page: int) -> List[Token]:
@@ -76,16 +82,13 @@ class PaddleEngine(OCREngine):
 
         import numpy as np
 
-        # Convert PIL image to RGB numpy array
         img_np = np.array(pil_image.convert("RGB"))
 
-        # Run PaddleOCR
         result = self.ocr.ocr(img_np, cls=True)
         if not result or result[0] is None:
             return []
 
         tokens = []
-        # Since we passed a single image, the results for that image are in result[0]
         for line in result[0]:
             if not line or len(line) < 2:
                 continue
@@ -94,7 +97,6 @@ class PaddleEngine(OCREngine):
             if not text:
                 continue
 
-            # Map coordinates: box is a list of 4 points: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
             xs = [pt[0] for pt in box]
             ys = [pt[1] for pt in box]
             x1 = int(min(xs))
@@ -102,10 +104,8 @@ class PaddleEngine(OCREngine):
             x2 = int(max(xs))
             y2 = int(max(ys))
 
-            # Scale confidence to 0-100 like Tesseract
             scaled_conf = float(conf) * 100.0
 
-            # Split line-level token into word-level tokens
             words = []
             for match in re.finditer(r"\S+", text):
                 words.append((match.group(), match.start(), match.end()))
@@ -117,7 +117,6 @@ class PaddleEngine(OCREngine):
             L = len(text)
 
             for word_text, start_idx, end_idx in words:
-                # Interpolate x coordinates
                 word_x1 = x1 + int((start_idx / L) * W) if L > 0 else x1
                 word_x2 = x1 + int((end_idx / L) * W) if L > 0 else x2
 

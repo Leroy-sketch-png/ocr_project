@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Optional, Tuple
 
 
@@ -40,3 +40,6 @@ class FieldValue:
     valid: bool
     reason: Optional[str]  # why invalid / missing
     row_candidates: Optional[List[Tuple[str, Optional[float]]]] = None
+    # The exact label string as it appears in the source document.
+    # Populated by the field extractor from the matched table row description.
+    field_label: Optional[str] = None

@@ -6,6 +6,7 @@ from .models import FieldValue
 def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
     if f is None:
         return {
+            "field_label": None,
             "value": None,
             "evidence": None,
             "page": None,
@@ -22,6 +23,7 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
         page = f.page or 0
 
     return {
+        "field_label": f.field_label,
         "value": f.value,
         "raw_text": f.raw_text,
         "evidence": evidence_text,

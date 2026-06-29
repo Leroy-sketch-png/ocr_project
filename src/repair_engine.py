@@ -1,10 +1,17 @@
 import copy
 import itertools
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from .cell_ocr import targeted_ocr
 from .models import FieldValue, Token
 from .value_parser import parse_numeric
+
+logger = logging.getLogger(__name__)
+
+# Tolerance for floating-point residual checks.
+# Using exact == 0.0 is unsafe due to float representation errors.
+_RESIDUAL_TOLERANCE = 1e-2
 
 EQUATIONS = [
     # (Target, [Summands])
@@ -50,6 +57,11 @@ def compute_equation_residual(
     return abs(fields[target].value - sum_val)
 
 
+def _residual_ok(residual: Optional[float]) -> bool:
+    """Return True if residual is effectively zero within tolerance."""
+    return residual is not None and abs(residual) < _RESIDUAL_TOLERANCE
+
+
 def generate_candidates(raw_text: str) -> List[str]:
     """
     Given a raw numeric string, generate slight mutations that fix common OCR errors.
@@ -70,10 +82,8 @@ def generate_candidates(raw_text: str) -> List[str]:
     # 2. Add/remove trailing zero
     digits_only = "".join(c for c in clean if c.isdigit())
     if digits_only:
-        # If it ends in zero, maybe remove it
         if clean.endswith("0"):
             candidates.append(clean[:-1])
-        # Maybe it's missing a zero
         candidates.append(clean + "0")
 
     # 3. Add/remove negative sign/brackets
@@ -82,7 +92,6 @@ def generate_candidates(raw_text: str) -> List[str]:
     elif "-" in clean:
         candidates.append(clean.replace("-", ""))
     else:
-        # try making it negative
         candidates.append("-" + clean)
 
     return list(set(candidates))
@@ -119,17 +128,17 @@ def apply_math_repairs(
     """
     repaired_fields = copy.deepcopy(fields)
 
-    print("--- DEBUG REPAIR ENGINE ---")
+    logger.debug("--- REPAIR ENGINE: current field values ---")
     for k, v in fields.items():
         if v.value is not None:
-            print(f"Field: {k} = {v.value}")
-    print("---------------------------")
+            logger.debug("Field: %s = %s", k, v.value)
+    logger.debug("------------------------------------------")
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands
 
         residual = compute_equation_residual(repaired_fields, target, summands)
-        print(f"Checking eq: {target} = {summands} -> Residual = {residual}")
+        logger.debug("Checking eq: %s = %s -> Residual = %s", target, summands, residual)
 
         # --- Phase 3 first: fill in a missing field via inverse search ---
         if optimization_mode:
@@ -147,7 +156,6 @@ def apply_math_repairs(
                 )
 
                 if all_others_valid:
-                    # Generate all valid candidate assignments for the OTHER suspects
                     other_suspects = [s for s in suspects if s != missing]
                     cand_lists = []
                     for s in other_suspects:
@@ -160,7 +168,6 @@ def apply_math_repairs(
                         cand_lists.append(cands)
 
                     for cand_combo in itertools.product(*cand_lists):
-                        # cand_combo is a tuple of (raw, val) for each other suspect
                         assignment = {
                             s: val for s, (raw, val) in zip(other_suspects, cand_combo)
                         }
@@ -181,7 +188,6 @@ def apply_math_repairs(
                                 cand_val is not None
                                 and abs(cand_val - expected_val) < 0.5
                             ):
-                                # Apply the assignment to the OTHER suspects
                                 for s, (raw, val) in zip(other_suspects, cand_combo):
                                     if repaired_fields[s].value != val:
                                         repaired_fields[s].value = val
@@ -189,11 +195,11 @@ def apply_math_repairs(
                                         repaired_fields[s].reason = (
                                             "inverse_search_combinatorial"
                                         )
-                                        print(
-                                            f"  [INVERSE SEARCH] Updated {s} to {val} to satisfy eq"
+                                        logger.debug(
+                                            "  [INVERSE SEARCH] Updated %s to %s to satisfy eq",
+                                            s, val,
                                         )
 
-                                # Add the missing field
                                 if missing in repaired_fields:
                                     fv = repaired_fields[missing]
                                     fv.value = cand_val
@@ -210,8 +216,9 @@ def apply_math_repairs(
                                         token,
                                         "inverse_search",
                                     )
-                                print(
-                                    f"  [INVERSE SEARCH] {missing} = {cand_val} (from token '{token.text}')"
+                                logger.debug(
+                                    "  [INVERSE SEARCH] %s = %s (from token '%s')",
+                                    missing, cand_val, token.text,
                                 )
                                 found_match = True
                                 break
@@ -220,7 +227,7 @@ def apply_math_repairs(
 
         # Recompute residual after potential inverse-search fill
         residual = compute_equation_residual(repaired_fields, target, summands)
-        if residual is None or residual == 0.0:
+        if residual is None or _residual_ok(residual):
             continue
 
         # We have a non-zero residual. Try to repair the suspect fields.
@@ -245,7 +252,7 @@ def apply_math_repairs(
                 repaired_fields[suspect].value = cand_val
 
                 new_res = compute_equation_residual(repaired_fields, target, summands)
-                if new_res is not None and new_res == 0.0:
+                if _residual_ok(new_res):
                     best_repair = (suspect, cand, cand_val)
 
                 repaired_fields[suspect].value = old_val
@@ -254,7 +261,7 @@ def apply_math_repairs(
             if best_repair:
                 break
 
-        # --- Phase 1.5 BS: Column Selection ---
+        # --- Phase 1.5: Column Selection ---
         if not best_repair:
             for suspect in suspects:
                 if (
@@ -272,10 +279,11 @@ def apply_math_repairs(
                         new_res = compute_equation_residual(
                             repaired_fields, target, summands
                         )
-                        if new_res is not None and new_res == 0.0:
+                        if _residual_ok(new_res):
                             best_repair = (suspect, cand_raw, cand_val)
-                            print(
-                                f"  [COLUMN REPAIR] {suspect} selected alternate column value: {cand_val}"
+                            logger.debug(
+                                "  [COLUMN REPAIR] %s selected alternate column value: %s",
+                                suspect, cand_val,
                             )
                         fv.value = old_val
                         if best_repair:
@@ -303,7 +311,7 @@ def apply_math_repairs(
                         new_res = compute_equation_residual(
                             repaired_fields, target, summands
                         )
-                        if new_res is not None and new_res == 0.0:
+                        if _residual_ok(new_res):
                             best_repair = (suspect, new_text, new_val)
                         fv.value = old_val
                         if best_repair:
@@ -314,8 +322,11 @@ def apply_math_repairs(
             repaired_fields[field].raw_text = cand_raw
             repaired_fields[field].value = cand_val
             repaired_fields[field].reason = "accounting_repair"
-            print(
-                f"  [REPAIR] {field}: {fields.get(field, None) and fields[field].raw_text} -> {cand_raw}"
+            logger.debug(
+                "  [REPAIR] %s: %s -> %s",
+                field,
+                fields.get(field, None) and fields[field].raw_text,
+                cand_raw,
             )
 
     return repaired_fields

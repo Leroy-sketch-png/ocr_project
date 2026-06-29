@@ -1,30 +1,50 @@
 ProfitAndLoss:
   Revenue:
-    keywords: ["Revenue", "Turnover", "Sales"]
+    keywords: ["Revenue", "Turnover", "Sales", "Total revenue", "Net revenue"]
   Gross Profit/Loss:
-    keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss"]
+    keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)"]
   Profit/Loss Before Tax:
-    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Operating result before tax"]
+    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Operating result before tax", "Profit/(loss) before tax"]
   Net Profit/Loss:
-    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)"]
+    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year"]
   Operating Profit/Loss:
-    keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations"]
+    keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)"]
   Cost of Sales:
-    keywords: ["Cost of Sales", "Cost of Goods Sold", "Total Operating expenses", "Total Operating Staff Depreciation"]
+    keywords: ["Cost of Sales", "Cost of Goods Sold", "Total Operating expenses", "Total Operating Staff Depreciation", "Cost of revenue"]
 
 Assets:
   Cash and Cash Equivalents:
-    keywords: ["Cash and Cash Equivalents", "Cash & Cash Equivalents", "Bank deposits, cash in hand", "Bank deposits"]
+    keywords: ["Cash and Cash Equivalents", "Cash & Cash Equivalents", "Bank deposits, cash in hand", "Bank deposits", "Cash and bank balances"]
   Current Assets:
     keywords: ["Current Assets", "Total Current Assets", "Total current asset"]
   Non-Current Assets:
     keywords: ["Non-Current Assets", "Noncurrent Assets", "Total fixed assets", "Total Non-Current Assets", "Total non-current asset"]
   Plant and Equipment:
-    keywords: ["Plant and Equipment", "Property Plant and Equipment", "Tangible fixed assets", "Tangible Total Fixtures"]
+    keywords:
+      - "Plant and Equipment"
+      - "Property Plant and Equipment"
+      - "Property, plant and equipment"
+      - "Property, Plant and Equipment"
+      - "PP&E"
+      - "Tangible fixed assets"
+      - "Tangible Total Fixtures"
+      - "Fixtures and fittings"
+      - "Machinery and equipment"
+      - "Plant, machinery and equipment"
   Trade Receivables:
-    keywords: ["Trade Receivables", "Trade Debtors", "Accounts Receivables", "Accounts Receivable", "Accounts Other Total Receivables", "Trade and other receivables"]
+    keywords:
+      - "Trade Receivables"
+      - "Trade Debtors"
+      - "Accounts Receivables"
+      - "Accounts Receivable"
+      - "Accounts Other Total Receivables"
+      - "Trade and other receivables"
+      - "Trade receivables"
+      - "Receivables from customers"
+      - "Trade and other current receivables"
+      - "Net trade receivables"
   Total Assets:
-    keywords: ["Total Assets"]
+    keywords: ["Total Assets", "Total assets"]
 
 Liabilities:
   Current Liabilities:
@@ -36,12 +56,23 @@ Liabilities:
 
 Equity:
   Paid Up Capital:
-    keywords: ["Paid Up Capital", "Share Capital"]
+    keywords: ["Paid Up Capital", "Share Capital", "Issued capital", "Ordinary shares"]
   Retained Earnings:
-    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses"]
+    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)"]
   Total Equity:
-    keywords: ["Total Equity", "Total Shareholders' Equity"]
+    keywords: ["Total Equity", "Total Shareholders' Equity", "Total equity", "Equity attributable to owners"]
 
 Auditor:
   Auditor's Opinion:
-    keywords: ["Opinion", "In our opinion", "Qualified opinion", "Adverse opinion", "Unqualified opinion", "Disclaimer of opinion"]
+    keywords:
+      - "Opinion"
+      - "In our opinion"
+      - "Qualified opinion"
+      - "Adverse opinion"
+      - "Unqualified opinion"
+      - "Unmodified opinion"
+      - "Disclaimer of opinion"
+      - "Independent auditor"
+      - "Independent Auditor's Report"
+      - "Basis for Opinion"
+      - "Key Audit Matters"
