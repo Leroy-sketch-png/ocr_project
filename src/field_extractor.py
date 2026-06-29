@@ -10,8 +10,16 @@ from .value_parser import parse_numeric
 
 def compute_match_score(query: str, desc: str) -> float:
     """
-    Computes a match score based on token overlap. Penalizes extra modifiers
-    unless they are present in the query.
+    Score how well `desc` matches `query`.
+    
+    Design:
+    - Full token overlap (query tokens ⊆ desc tokens): high score, no extra-word penalty.
+    - Partial overlap: scaled score, small extra-word penalty.
+    - No overlap: fall back to fuzzy ratio.
+    
+    The key change from the old version: when query tokens are fully contained
+    in desc tokens (containment match), we do NOT penalise the extra description
+    words. This handles "Trade and other receivables" matching "Trade Receivables".
     """
     q_clean = re.sub(r"[^a-z0-9\s]", "", query.lower())
     d_clean = re.sub(r"[^a-z0-9\s]", "", desc.lower())
@@ -19,21 +27,33 @@ def compute_match_score(query: str, desc: str) -> float:
     q_tokens = set(q_clean.split())
     d_tokens = set(d_clean.split())
 
+    # Remove stop words that add noise
+    _STOPS = {"and", "or", "the", "of", "for", "in", "net", "total", "other"}
+    q_tokens -= _STOPS
+    d_tokens -= _STOPS
+
     if not q_tokens or not d_tokens:
-        return 0.0
+        return fuzz.ratio(query.lower(), desc.lower())
 
     intersection = q_tokens.intersection(d_tokens)
     if not intersection:
         return fuzz.ratio(query.lower(), desc.lower())
 
-    recall = len(intersection) / len(q_tokens)
-    extra_words = len(d_tokens) - len(intersection)
+    recall = len(intersection) / len(q_tokens)  # how much of query is covered
+    extra_words = len(d_tokens) - len(intersection)  # words in desc not in query
 
     if recall == 1.0:
-        score = 100 - (extra_words * 2)
-        return max(score, fuzz.ratio(query.lower(), desc.lower()))
+        # All query tokens are present in description — containment match.
+        # Do NOT penalise extra words: "Trade and other receivables" should
+        # score as well as "Trade receivables" for the query "trade receivables".
+        base = 95.0
+        # Small penalty only if description is 3x longer than query (very different)
+        if extra_words > len(q_tokens) * 2:
+            base -= 5.0
+        return max(base, fuzz.ratio(query.lower(), desc.lower()))
     elif recall >= 0.5:
-        score = (recall * 100) - (extra_words * 5)
+        # Partial overlap — keep a small extra-word penalty but don't kill the score
+        score = (recall * 90) - (extra_words * 5)
         return max(score, fuzz.ratio(query.lower(), desc.lower()))
 
     return fuzz.ratio(query.lower(), desc.lower())
@@ -59,19 +79,42 @@ def compute_bbox(tokens: List[Token]) -> Optional[Tuple[int, int, int, int]]:
 
 def normalize_auditor_opinion(text: str) -> Optional[str]:
     """
-    Convert a matched auditor paragraph into one of the assignment labels.
+    Classify an auditor's opinion block into one of the four standard labels.
+    
+    Handles both:
+    - Compact phrases: "qualified opinion", "adverse opinion"
+    - Split mentions: "our opinion is unmodified" (no adjacent "opinion")
     """
-    text_lower = text.lower()
-    if "disclaimer of opinion" in text_lower:
+    t = text.lower()
+
+    # Check for disclaimer first (most specific — a disclaimer IS NOT a qualified)
+    if "disclaim" in t:
         return "Disclaimer"
-    if "adverse opinion" in text_lower:
+
+    # Adverse opinion
+    if "adverse" in t and ("opinion" in t or "view" in t):
         return "Adverse"
-    if "qualified opinion" in text_lower:
+
+    # Qualified opinion — "qualified" appears near "opinion"
+    # Also catches "except for" which is the standard signal of a qualified opinion
+    if "qualified opinion" in t or ("qualified" in t and "opinion" in t):
+        # Make sure it's not "unqualified" being matched by "qualified"
+        if "unqualified" not in t and "unmodified" not in t:
+            return "Qualified"
+    if "except for" in t:
         return "Qualified"
-    if "unqualified opinion" in text_lower or "unmodified opinion" in text_lower:
+
+    # Unqualified / clean / unmodified opinion
+    if (
+        "unqualified opinion" in t
+        or "unmodified opinion" in t
+        or "unmodified" in t
+        or "true and fair view" in t
+        or "present fairly" in t
+        or "clean opinion" in t
+    ):
         return "Unqualified"
-    if "in our opinion, the accompanying financial statements" in text_lower:
-        return "Unqualified"
+
     return None
 
 
@@ -177,8 +220,6 @@ def extract_fields(
                     )
 
     # Extract Auditor's Opinion
-    # The outer loop must break as soon as a valid opinion is found so that
-    # a later, possibly lower-quality block cannot overwrite an already-correct result.
     auditor_kws = flat_config.get("Auditor's Opinion", [])
     found_opinion = False
     for block in text_blocks:
@@ -189,7 +230,8 @@ def extract_fields(
             if kw.lower() in text_lower:
                 opinion_value = normalize_auditor_opinion(text_lower)
                 if opinion_value is None:
-                    opinion_value = normalize_auditor_opinion(kw)
+                    # keyword present but opinion type not determinable from this block — skip
+                    continue
                 results["Auditor's Opinion"] = FieldValue(
                     name="Auditor's Opinion",
                     value=opinion_value,
@@ -197,12 +239,11 @@ def extract_fields(
                     page=block.page,
                     tokens=block.tokens,
                     bbox=compute_bbox(block.tokens),
-                    valid=opinion_value is not None,
-                    reason=None if opinion_value is not None else "opinion_parse_error",
-                    field_label="Auditor's Opinion",
+                    valid=True,
+                    reason=None,
+                    field_label=" ".join(t.text for t in block.tokens[:12]),
                 )
-                if opinion_value is not None:
-                    found_opinion = True
-                    break
+                found_opinion = True
+                break
 
     return results
