@@ -154,7 +154,6 @@ def detect_year_column(table_rows: List[TableRow]) -> Dict[int, float]:
     """
     page_year_x: Dict[int, float] = {}
     last_seen_x = None
-    reporting_year = None
     
     pages = sorted(list(set(row.page for row in table_rows)))
     
@@ -176,14 +175,9 @@ def detect_year_column(table_rows: List[TableRow]) -> Dict[int, float]:
         # Filter to unique years
         unique_years = {y[1]: y[0] for y in year_cells}
         if len(unique_years) >= 2:
-            max_year_in_header = max(unique_years.keys())
-            if reporting_year is None:
-                reporting_year = max_year_in_header
-                
-            if max_year_in_header == reporting_year:
-                target_x = unique_years[max_year_in_header]
-                page_year_x[page] = target_x
-                last_seen_x = target_x
+            target_x = unique_years[max(unique_years.keys())]
+            page_year_x[page] = target_x
+            last_seen_x = target_x
         
         if page not in page_year_x and last_seen_x is not None:
             # Forward-fill X coordinate for pages without headers
