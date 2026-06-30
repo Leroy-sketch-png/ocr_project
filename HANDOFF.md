@@ -3,8 +3,9 @@
 **Date:** 2026-06-30
 **Status:** Pipeline stable and generalized. V4 implementation attempted but halted due to evaluation regression.
 
-## F1 Scores (current)
+## Verified Baseline After V4 Session
 S1: 100% | S2: 94.44% | S3: 100% | Overall: 98.11%
+S2 Miss Details: Profit/Loss Before Tax. Expected `11095953.0`, Extracted `14095953.0` (raw `14 095 953`). Net Profit/Loss is now correct (S2 F1 remains 94.44% due to this other field).
 
 ## What the pipeline does
 The pipeline ingests PDF documents, renders them to images, and extracts structural text tokens via Tesseract. It clusters these tokens by spatial coordinates into rows and dynamic columns. It applies fuzzy matching via rapidfuzz to align document descriptions against config-defined field criteria. A validation layer enforces structural accounting constraints through an exhaustive permutation repair engine.
