@@ -1,5 +1,6 @@
 import re
-from typing import Dict, List
+from collections import defaultdict
+from typing import Dict, List, Set, Tuple
 
 from .models import TableRow, TextBlock, Token
 
@@ -183,7 +184,6 @@ def build_table_rows(text_blocks: List[TextBlock], dpi_scale: float = 1.0) -> Li
     Identify lines containing financial data and construct TableRows.
     Aligns cells into unified columns per page using spatial clustering.
     """
-    from collections import defaultdict
     page_blocks = defaultdict(list)
     for block in text_blocks:
         page_blocks[block.page].append(block)

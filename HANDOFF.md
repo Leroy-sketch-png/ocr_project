@@ -41,3 +41,13 @@ API Server: `uvicorn src.api:app --host 0.0.0.0 --port 8000`
 1. **LLM Disambiguation**: Replace regex/fuzzy matching with an LLM for complex description matching and extraction tasks.
 2. **Batch API Endpoint**: Expose batch processing capabilities.
 3. **Support for more formats**: Add support for Excel/Word documents.
+
+## Reviewer Feedback — V6.1 Fixes
+- Auditor fallback loop now guarded by `if not found_opinion` (confirmed already present in V6)
+- Inline imports moved to file top (found in `src/table_builder.py`)
+- Preprocessed image cache: verified single preprocess per page — no fix needed (already in V6)
+- residual==0.0: already using `_RESIDUAL_TOLERANCE=1e-2` since V6
+- print() statements: verified no debug print() statements in repair_engine (already converted to `logger.debug()` since V6)
+- Plant and Equipment S3: added keywords ["Right-of-use assets", "Lease assets", "Equipment"]
+- Trade Receivables S3: added keywords ["Debtors", "Receivables", "Debiteuren"]
+- `sample3_output_v6_final.json` generated in `artifacts/`
