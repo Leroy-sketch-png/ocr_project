@@ -113,6 +113,8 @@ def is_numeric_token(text: str) -> bool:
     """
     Check if a token mostly consists of digits, dots, commas, parens, or dashes.
     """
+    if text in ("l", "I", "i", "o", "O"):
+        return True
     return bool(re.match(r"^[\d,().\-]+$", text))
 
 

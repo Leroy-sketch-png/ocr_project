@@ -8,6 +8,10 @@ def parse_numeric(raw: Optional[str]) -> Optional[float]:
     if not raw:
         return None
     s = raw.strip()
+    if s in ("l", "I", "i"):
+        s = "1"
+    elif s in ("o", "O"):
+        s = "0"
     if s in ("", "None", "-"):
         return 0.0 if s == "-" else None
 
