@@ -374,7 +374,8 @@ def extract_fields(
                     )
 
     # Extract Auditor's Opinion
-    auditor_kws = flat_config.get("Auditor's Opinion", [])
+    auditor_config = flat_config.get("Auditor's Opinion", {})
+    auditor_kws = auditor_config.get("keywords", []) if isinstance(auditor_config, dict) else auditor_config
     found_opinion = False
     for block in text_blocks:
         if found_opinion:

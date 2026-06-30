@@ -47,10 +47,7 @@ def compare_values(extracted: Any, expected: Any) -> bool:
     if expected is None or extracted is None:
         return False
     if isinstance(expected, str) and isinstance(extracted, str):
-        return (
-            expected.lower() in extracted.lower()
-            or extracted.lower() in expected.lower()
-        )
+        return expected.lower() == extracted.lower()
     try:
         return abs(float(extracted) - float(expected)) < 0.01
     except (ValueError, TypeError):
