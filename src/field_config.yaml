@@ -10,6 +10,7 @@ ProfitAndLoss:
   Operating Profit/Loss:
     keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)"]
   Cost of Sales:
+    sign: negative
     keywords: ["Cost of Sales", "Cost of Goods Sold", "Total Operating expenses", "Total Operating Staff Depreciation", "Cost of revenue"]
 
 Assets:

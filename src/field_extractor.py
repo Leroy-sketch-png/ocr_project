@@ -207,20 +207,22 @@ def extract_fields(
             continue
         for field_name, details in fields.items():
             if isinstance(details, dict):
-                flat_config[field_name] = details.get("keywords", [])
+                flat_config[field_name] = {"keywords": details.get("keywords", []), **details}
+            else:
+                flat_config[field_name] = {"keywords": details}
 
     # Track the highest scoring row per field
     best_scores = {k: -1.0 for k in flat_config.keys()}
 
-    # Extract numeric fields
     for row in table_rows:
         desc_lower = row.description.lower()
-        for field_name, keywords in flat_config.items():
+        for field_name, field_cfg in flat_config.items():
             if field_name == "Auditor's Opinion":
                 continue  # Handled separately
 
+            kws = field_cfg.get("keywords", [])
             best_kw_score = max(
-                (compute_match_score(kw, desc_lower) for kw in keywords), default=0.0
+                (compute_match_score(kw, desc_lower) for kw in kws), default=0.0
             )
 
             if best_kw_score >= 82:
@@ -264,8 +266,8 @@ def extract_fields(
                 raw_text = row.cells[best_cell_idx] if row.cells else None
                 val = parse_numeric(raw_text)
                 
-                # GT expects Cost of Sales to be negative
-                if field_name == "Cost of Sales" and val is not None and val > 0:
+                field_cfg = flat_config.get(field_name, {})
+                if field_cfg.get("sign") == "negative" and val is not None and val > 0:
                     val = -val
                     if raw_text and not raw_text.startswith("-") and not "(" in raw_text:
                         raw_text = "-" + raw_text
@@ -297,7 +299,8 @@ def extract_fields(
                         for cell_text in row.cells:
                             cval = parse_numeric(cell_text)
                             if cval is not None:
-                                if field_name == "Cost of Sales" and cval > 0:
+                                field_cfg = flat_config.get(field_name, {})
+                                if field_cfg.get("sign") == "negative" and cval is not None and cval > 0:
                                     cval = -cval
                                     if cell_text and not cell_text.startswith("-") and not "(" in cell_text:
                                         cell_text = "-" + cell_text
