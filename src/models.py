@@ -4,7 +4,7 @@ from typing import Any, List, Optional, Tuple
 
 @dataclass
 class Document:
-    pages: List[Tuple[int, Any]]  # List of (page_index, PIL.Image)
+    pages: List[Tuple[int, Any, float]]  # List of (page_index, PIL.Image, dpi_scale)
 
 
 @dataclass

@@ -46,8 +46,10 @@ def process_file(
     # The cached image is reused by both the OCR engine and the repair engine,
     # avoiding a second preprocessing pass on the same page.
     processed_images: Dict[int, Any] = {
-        page_idx: preprocess_image(pil_img) for page_idx, pil_img in doc.pages
+        page_idx: preprocess_image(pil_img) for page_idx, pil_img, _ in doc.pages
     }
+    
+    global_dpi_scale = doc.pages[0][2] if doc.pages else 1.0
 
     all_tokens = []
     for page_idx, processed_img in processed_images.items():
@@ -58,7 +60,7 @@ def process_file(
         return {"error": "OCR extraction failed"}
 
     blocks = build_text_blocks(all_tokens)
-    table_rows = build_table_rows(blocks)
+    table_rows = build_table_rows(blocks, dpi_scale=global_dpi_scale)
 
     field_defs = load_field_config(config_path)
 
@@ -69,7 +71,7 @@ def process_file(
             required_fields.extend(fields.keys())
 
     year_col_x_map = detect_year_column(table_rows)
-    field_values = extract_fields(table_rows, blocks, field_defs, year_col_x_map)
+    field_values = extract_fields(table_rows, blocks, field_defs, year_col_x_map, dpi_scale=global_dpi_scale)
     parse_numeric_fields(field_values)
 
     # Apply Mathematical Repair Engine (Math constraints + Targeted OCR).

@@ -197,6 +197,7 @@ def extract_fields(
     text_blocks: List[TextBlock],
     config: Dict[str, Any],
     year_x_map: Dict[int, float] = None,
+    dpi_scale: float = 1.0,
 ) -> Dict[str, FieldValue]:
     results = {}
     flat_config = {}
@@ -243,7 +244,7 @@ def extract_fields(
                             min_dist = dist
                             closest_idx = i
                             
-                    if closest_idx is not None and min_dist < 400.0:
+                    if closest_idx is not None and min_dist < (400.0 * dpi_scale):
                         best_cell_idx = closest_idx
                         
                 if best_cell_idx is None:

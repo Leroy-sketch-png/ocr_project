@@ -106,7 +106,7 @@ def detect_column_boundaries(all_groups_on_page: List[List[Token]], gap_threshol
     return clusters
 
 
-def build_table_rows(text_blocks: List[TextBlock]) -> List[TableRow]:
+def build_table_rows(text_blocks: List[TextBlock], dpi_scale: float = 1.0) -> List[TableRow]:
     """
     Identify lines containing financial data and construct TableRows.
     Aligns cells into unified columns per page using spatial clustering.
@@ -138,7 +138,7 @@ def build_table_rows(text_blocks: List[TextBlock]) -> List[TableRow]:
                         # Use 80 pixels to bridge thousands separators (e.g. '75 427 091')
                         # but still split distinct columns.
                         gap = t.bbox[0] - prev_t.bbox[2]
-                        if gap > 80:
+                        if gap > int(80 * dpi_scale):
                             numeric_groups.append(current_group)
                             current_group = []
                     current_group.append(t)
@@ -157,7 +157,7 @@ def build_table_rows(text_blocks: List[TextBlock]) -> List[TableRow]:
             block_numeric_groups.append(numeric_groups)
             block_desc_tokens.append(desc_tokens)
 
-        col_centers = detect_column_boundaries(page_numeric_groups, 40)
+        col_centers = detect_column_boundaries(page_numeric_groups, int(40 * dpi_scale))
 
         for block, numeric_groups, desc_tokens in zip(blocks_on_page, block_numeric_groups, block_desc_tokens):
             if not numeric_groups:
