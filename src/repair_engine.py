@@ -218,6 +218,7 @@ def apply_math_repairs(
                                     if repaired_fields[s].value != val:
                                         repaired_fields[s].value = val
                                         repaired_fields[s].raw_text = raw
+                                        repaired_fields[s].tokens = []  # clear old tokens so evidence falls back to raw_text
                                         repaired_fields[s].reason = (
                                             "inverse_search_combinatorial"
                                         )
