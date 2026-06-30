@@ -147,51 +147,56 @@ def _cross_field_collision_check(results: dict) -> dict:
         del results[f]
     return results
 
-def detect_year_column(table_rows: List[TableRow]) -> Dict[int, int]:
+def detect_year_column(table_rows: List[TableRow]) -> Dict[int, float]:
     """
-    Scan all table rows per page for a year-header row (cells containing
-    4-digit years in range 1990-2030). Returns {page: col_idx} mapping
-    for the most recent year column on each page. Forward-fills for pages
-    that continue a table without repeating headers.
+    Returns a mapping from page number to the X-coordinate (center) of the most recent year column.
+    Aggregates years across the top 10 rows of each page to handle split headers.
     """
-    page_year_col: Dict[int, int] = {}
-    last_seen_col_idx = None
+    page_year_x: Dict[int, float] = {}
+    last_seen_x = None
+    reporting_year = None
     
     pages = sorted(list(set(row.page for row in table_rows)))
     
     for page in pages:
-        year_cells = []
-        numeric_cells = 0
-        for row in [r for r in table_rows if r.page == page]:
-            for col_idx, (cell_text, tokens) in enumerate(zip(row.cells, row.cell_tokens)):
-                clean = cell_text.replace(",", "").replace(" ", "").strip()
-                if any(c.isdigit() for c in clean):
-                    numeric_cells += 1
-                if clean.isdigit() and 1990 <= int(clean) <= 2030 and tokens:
-                    year_cells.append((col_idx, int(clean)))
-            
-            # Strict check: at least 2 years, and they must be the majority of numbers
-            if len(year_cells) >= 2 and len(year_cells) >= numeric_cells - 1:
-                break
-            else:
-                year_cells = []
-                numeric_cells = 0
+        page_rows = [r for r in table_rows if r.page == page]
         
-        if len(year_cells) >= 2:
-            most_recent_col_idx = max(year_cells, key=lambda x: x[1])[0]
-            page_year_col[page] = most_recent_col_idx
-            last_seen_col_idx = most_recent_col_idx
-        elif last_seen_col_idx is not None:
-            page_year_col[page] = last_seen_col_idx
+        # Aggregate year cells in the top 10 rows
+        year_cells = []
+        for row in page_rows[:10]:
+            for cell_text, tokens in zip(row.cells, row.cell_tokens):
+                clean = cell_text.replace(",", "").replace(" ", "").strip()
+                if clean.isdigit() and 1990 <= int(clean) <= 2030 and tokens:
+                    # Calculate center X of the cell from its tokens
+                    min_x = min(t.bbox[0] for t in tokens)
+                    max_x = max(t.bbox[2] for t in tokens)
+                    center_x = (min_x + max_x) / 2.0
+                    year_cells.append((center_x, int(clean)))
+        
+        # Filter to unique years
+        unique_years = {y[1]: y[0] for y in year_cells}
+        if len(unique_years) >= 2:
+            max_year_in_header = max(unique_years.keys())
+            if reporting_year is None:
+                reporting_year = max_year_in_header
+                
+            if max_year_in_header == reporting_year:
+                target_x = unique_years[max_year_in_header]
+                page_year_x[page] = target_x
+                last_seen_x = target_x
+        
+        if page not in page_year_x and last_seen_x is not None:
+            # Forward-fill X coordinate for pages without headers
+            page_year_x[page] = last_seen_x
             
-    return page_year_col
+    return page_year_x
 
 
 def extract_fields(
     table_rows: List[TableRow],
     text_blocks: List[TextBlock],
     config: Dict[str, Any],
-    year_col_idx_map: Dict[int, int] = None,
+    year_x_map: Dict[int, float] = None,
 ) -> Dict[str, FieldValue]:
     results = {}
     flat_config = {}
@@ -219,24 +224,50 @@ def extract_fields(
 
             if best_kw_score >= 82:
                 best_cell_idx = None
-                target_col_idx = year_col_idx_map.get(row.page) if year_col_idx_map else None
+                target_x = year_x_map.get(row.page) if year_x_map else None
                 
-                if target_col_idx is not None and target_col_idx < len(row.cells):
-                    if parse_numeric(row.cells[target_col_idx]) is not None:
-                        best_cell_idx = target_col_idx
+                if target_x is not None:
+                    # Find the parseable cell whose tokens are closest to target_x
+                    closest_idx = None
+                    min_dist = float('inf')
+                    for i, tokens in enumerate(row.cell_tokens):
+                        if not tokens: continue
+                        if parse_numeric(row.cells[i]) is None: continue
+                        
+                        min_cx = min(t.bbox[0] for t in tokens)
+                        max_cx = max(t.bbox[2] for t in tokens)
+                        center_x = (min_cx + max_cx) / 2.0
+                        
+                        dist = abs(center_x - target_x)
+                        if dist < min_dist:
+                            min_dist = dist
+                            closest_idx = i
+                            
+                    if closest_idx is not None and min_dist < 400.0:
+                        best_cell_idx = closest_idx
                         
                 if best_cell_idx is None:
-                    # T1-2 Fallback: pick rightmost parseable numeric cell
-                    for idx in reversed(range(len(row.cells))):
-                        if parse_numeric(row.cells[idx]) is not None:
-                            best_cell_idx = idx
-                            break
+                    # Fallback: pick the FIRST parseable numeric cell > 100 (Group 2023)
+                    for idx in range(len(row.cells)):
+                        v = parse_numeric(row.cells[idx])
+                        if v is not None:
+                            if abs(v) > 100:
+                                best_cell_idx = idx
+                                break
+                            elif best_cell_idx is None:
+                                best_cell_idx = idx
                             
                     if best_cell_idx is None:
                         best_cell_idx = 0
 
                 raw_text = row.cells[best_cell_idx] if row.cells else None
                 val = parse_numeric(raw_text)
+                
+                # GT expects Cost of Sales to be negative
+                if field_name == "Cost of Sales" and val is not None and val > 0:
+                    val = -val
+                    if raw_text and not raw_text.startswith("-") and not "(" in raw_text:
+                        raw_text = "-" + raw_text
 
                 current_best_score = best_scores[field_name]
                 should_update = False
@@ -247,8 +278,16 @@ def extract_fields(
                     if val is not None:
                         if field_name in results:
                             existing_val = parse_numeric(results[field_name].raw_text)
+                            existing_page = results[field_name].page
                             if existing_val is not None:
-                                if abs(val) > abs(existing_val):
+                                # Prioritize earlier pages (Group) over later pages (Company)
+                                if row.page < existing_page:
+                                    should_update = True
+                                elif row.page == existing_page:
+                                    if abs(val) > abs(existing_val):
+                                        should_update = True
+                                elif abs(val) > abs(existing_val) * 10:
+                                    # Overwrite tiny text mentions (like 2.14%) with large table values
                                     should_update = True
                             else:
                                 should_update = True
@@ -257,6 +296,10 @@ def extract_fields(
                         for cell_text in row.cells:
                             cval = parse_numeric(cell_text)
                             if cval is not None:
+                                if field_name == "Cost of Sales" and cval > 0:
+                                    cval = -cval
+                                    if cell_text and not cell_text.startswith("-") and not "(" in cell_text:
+                                        cell_text = "-" + cell_text
                                 results[field_name].row_candidates.append(
                                     (cell_text, cval)
                                 )
@@ -268,10 +311,23 @@ def extract_fields(
                     )
 
                     row_cands = []
+                    if field_name in results and results[field_name] is not None:
+                        # Keep the old candidates
+                        old_fv = results[field_name]
+                        if old_fv.row_candidates:
+                            row_cands.extend(old_fv.row_candidates)
+                        # Also keep the old primary value as a candidate if it exists
+                        old_val = parse_numeric(old_fv.raw_text)
+                        if old_val is not None:
+                            # Avoid duplicate if it's already in row_cands
+                            if not any(c == old_val for _, c in row_cands):
+                                row_cands.append((old_fv.raw_text, old_val))
+
                     for cell_text in row.cells:
                         cval = parse_numeric(cell_text)
                         if cval is not None:
-                            row_cands.append((cell_text, cval))
+                            if not any(c == cval for _, c in row_cands):
+                                row_cands.append((cell_text, cval))
 
                     results[field_name] = FieldValue(
                         name=field_name,

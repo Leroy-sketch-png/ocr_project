@@ -52,7 +52,6 @@ Liabilities:
       - "Total Current Liabilities"
       - "Total current liability"
       - "Total current liabilities"
-      - "Trade and other payables"
       - "Trade payables and accrued costs"
       - "Accounts payable and accrued liabilities"
   Non-Current Liabilities:
@@ -65,6 +64,7 @@ Liabilities:
       - "Long term liabilities"
       - "Lease liabilities"
       - "Long-term borrowings"
+      - "Borrowings"
       - "Finance lease liabilities"
   Total Liabilities:
     keywords: ["Total Liabilities", "Total ilities"]

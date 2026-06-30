@@ -36,7 +36,7 @@ class TesseractEngine(OCREngine):
     def recognize_page(self, pil_image: Any, page: int) -> List[Token]:
         # pil_image is already preprocessed by the caller — do NOT
         # preprocess it again inside this method. See main.py for caching logic.
-        data = pytesseract.image_to_data(pil_image, output_type=Output.DICT)
+        data = pytesseract.image_to_data(pil_image, output_type=Output.DICT, config="--psm 6")
         tokens = []
         n = len(data["text"])
         for i in range(n):
@@ -44,6 +44,8 @@ class TesseractEngine(OCREngine):
             if not txt:
                 continue
             conf = float(data["conf"][i])
+            if conf < 30.0:
+                continue
             x = data["left"][i]
             y = data["top"][i]
             w = data["width"][i]

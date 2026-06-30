@@ -12,9 +12,11 @@ def parse_numeric(raw: Optional[str]) -> Optional[float]:
         return 0.0 if s == "-" else None
 
     negative = False
-    if s.startswith("(") and s.endswith(")"):
+    if "(" in s and ")" in s:
         negative = True
-        s = s[1:-1]
+        s = s.replace("(", "").replace(")", "")
+    elif s.startswith("-"):
+        negative = True
 
     # Replace dots and commas that act as thousands separators
     # A dot or comma followed by exactly 3 digits is a thousands separator
@@ -33,7 +35,9 @@ def parse_numeric(raw: Optional[str]) -> Optional[float]:
 
     try:
         val = float(match.group(0))
-        return -val if negative else val
+        if negative and val > 0:
+            return -val
+        return val
     except ValueError:
         return None
 
