@@ -4,7 +4,7 @@ ProfitAndLoss:
   Gross Profit/Loss:
     keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)"]
   Profit/Loss Before Tax:
-    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Operating result before tax", "Profit/(loss) before tax"]
+    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax"]
   Net Profit/Loss:
     keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss"]
   Operating Profit/Loss:
