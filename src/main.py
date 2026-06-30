@@ -15,7 +15,7 @@ from .runtime_config import (
     inspect_runtime,
     validate_runtime,
 )
-from .table_builder import build_table_rows, build_text_blocks
+from .table_builder import build_table_rows, build_text_blocks, detect_page_sections
 from .validator import is_ocr_failure, validate_fields
 from .value_parser import parse_numeric_fields
 
@@ -60,6 +60,7 @@ def process_file(
         return {"error": "OCR extraction failed"}
 
     blocks = build_text_blocks(all_tokens)
+    page_section_map = detect_page_sections(blocks)
     table_rows = build_table_rows(blocks, dpi_scale=global_dpi_scale)
 
     field_defs = load_field_config(config_path)
@@ -68,11 +69,12 @@ def process_file(
     required_fields: List[str] = []
     for sec, fields in field_defs.items():
         if isinstance(fields, dict):
-            required_fields.extend(fields.keys())
+            required_fields.extend([k for k in fields.keys() if not k.startswith("_")])
 
     year_col_x_map, full_year_map = detect_year_column(table_rows)
     field_values = extract_fields(
-        table_rows, blocks, field_defs, year_col_x_map, full_year_map, dpi_scale=global_dpi_scale
+        table_rows, blocks, field_defs, year_col_x_map, full_year_map, 
+        page_section_map=page_section_map, dpi_scale=global_dpi_scale
     )
     parse_numeric_fields(field_values)
 

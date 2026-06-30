@@ -1,19 +1,21 @@
 ProfitAndLoss:
+  _section: income_statement
   Revenue:
     keywords: ["Revenue", "Turnover", "Sales", "Total revenue", "Net revenue"]
   Gross Profit/Loss:
-    keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)"]
+    keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)", "Gross margin"]
   Profit/Loss Before Tax:
-    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax"]
+    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax", "Income before provision for income taxes"]
   Net Profit/Loss:
     keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss"]
   Operating Profit/Loss:
-    keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)"]
+    keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)", "Operating income"]
   Cost of Sales:
     sign: negative
     keywords: ["Cost of Sales", "Cost of Goods Sold", "Total Operating expenses", "Total Operating Staff Depreciation", "Cost of revenue"]
 
 Assets:
+  _section: balance_sheet
   Cash and Cash Equivalents:
     keywords: ["Cash and Cash Equivalents", "Cash & Cash Equivalents", "Bank deposits, cash in hand", "Bank deposits", "Cash and bank balances"]
   Current Assets:
@@ -21,6 +23,7 @@ Assets:
   Non-Current Assets:
     keywords: ["Non-Current Assets", "Noncurrent Assets", "Total fixed assets", "Total Non-Current Assets", "Total non-current asset"]
   Plant and Equipment:
+    _section: ""
     keywords:
       - "Plant and Equipment"
       - "Property Plant and Equipment"
@@ -45,6 +48,7 @@ Assets:
     keywords: ["Total Assets", "Total assets"]
 
 Liabilities:
+  _section: balance_sheet
   Current Liabilities:
     keywords:
       - "Current Liabilities"
@@ -71,10 +75,11 @@ Liabilities:
     keywords: ["Total Liabilities", "Total ilities"]
 
 Equity:
+  _section: balance_sheet
   Paid Up Capital:
-    keywords: ["Paid Up Capital", "Share Capital", "Issued capital", "Ordinary shares"]
+    keywords: ["Paid Up Capital", "Share Capital", "Issued capital", "Ordinary shares", "Common stock and additional paid-in capital", "Common stock"]
   Retained Earnings:
-    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)", "Other equity"]
+    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)", "Other equity", "Accumulated deficit"]
   Total Equity:
     keywords: ["Total Equity", "Total Shareholders' Equity", "Total equity", "Equity attributable to owners", "Equity attributable to owner"]
 

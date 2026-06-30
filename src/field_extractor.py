@@ -206,6 +206,7 @@ def extract_fields(
     config: Dict[str, Any],
     year_x_map: Dict[int, float] = None,
     full_year_map: Dict[int, Dict[int, float]] = None,
+    page_section_map: Dict[int, str] = None,
     dpi_scale: float = 1.0,
 ) -> Dict[str, FieldValue]:
     results = {}
@@ -215,10 +216,14 @@ def extract_fields(
         if not isinstance(fields, dict):
             continue
         for field_name, details in fields.items():
+            if field_name.startswith("_"):
+                continue
             if isinstance(details, dict):
                 flat_config[field_name] = {"keywords": details.get("keywords", []), **details}
             else:
                 flat_config[field_name] = {"keywords": details}
+            if "_section" in fields:
+                flat_config[field_name]["_section"] = fields["_section"]
 
     # Track the highest scoring row per field
     best_scores = {k: -1.0 for k in flat_config.keys()}
@@ -228,6 +233,12 @@ def extract_fields(
         for field_name, field_cfg in flat_config.items():
             if field_name == "Auditor's Opinion":
                 continue  # Handled separately
+
+            field_section = field_cfg.get("_section")
+            if page_section_map and field_section:
+                row_section = page_section_map.get(row.page, "unknown")
+                if row_section != "unknown" and row_section != field_section:
+                    continue  # confirmed section mismatch — skip
 
             kws = field_cfg.get("keywords", [])
             best_kw_score = max(

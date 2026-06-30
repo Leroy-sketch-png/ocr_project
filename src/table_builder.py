@@ -1,8 +1,80 @@
 import re
-from typing import List
+from typing import Dict, List
 
 from .models import TableRow, TextBlock, Token
 
+SECTION_MARKERS = {
+    "income_statement": [
+        "income statement", "profit and loss", "profit or loss",
+        "statement of profit", "statement of comprehensive income",
+        "consolidated statement of profit",
+    ],
+    "balance_sheet": [
+        "balance sheet", "statement of financial position",
+        "financial position", "consolidated balance",
+    ],
+    "cash_flow": [
+        "cash flow", "statement of cash flows",
+    ],
+    "changes_in_equity": [
+        "changes in equity", "statement of changes",
+        "movements in equity",
+    ],
+    "notes": [
+        "notes to the financial"
+    ],
+}
+
+def detect_page_sections(blocks: List[TextBlock]) -> Dict[int, str]:
+    """
+    Pre-pass section scanner. Operates on ALL blocks including
+    non-numeric ones (which build_table_rows discards).
+    Returns {page_number: section_type} lookup.
+    """
+    page_section: Dict[int, str] = {}
+    current_section = "unknown"
+    
+    # Sort by page then by vertical position
+    sorted_blocks = sorted(
+        blocks,
+        key=lambda b: (b.page, b.tokens[0].bbox[1] if b.tokens else 0)
+    )
+    
+    for block in sorted_blocks:
+        line_text = " ".join(t.text for t in block.tokens)
+        
+        # AUDITOR REPORT TRAP PREVENTION:
+        # Real section headers are short (< 80 chars).
+        # Auditor prose mentions all statements in one long sentence.
+        if len(line_text) > 80:
+            # Still record page as current_section if not yet seen
+            if block.page not in page_section:
+                page_section[block.page] = current_section
+            continue
+        
+        line_lower = line_text.lower()
+        matched = False
+        for stype, markers in SECTION_MARKERS.items():
+            if any(m in line_lower for m in markers):
+                current_section = stype
+                matched = True
+                break
+        
+        # Strict exact matches for tricky single-word headers
+        if not matched:
+            stripped = line_lower.strip()
+            if stripped in ["balance", "assets", "equity and liabilities", "statement of financial statements"]:
+                current_section = "balance_sheet"
+                matched = True
+        
+        # First occurrence on this page sets the page section
+        if block.page not in page_section:
+            page_section[block.page] = current_section
+        elif matched:
+            # Update if a new section starts mid-page
+            page_section[block.page] = current_section
+    
+    return page_section
 
 def build_text_blocks(tokens: List[Token], y_threshold: int = 12) -> List[TextBlock]:
     """
