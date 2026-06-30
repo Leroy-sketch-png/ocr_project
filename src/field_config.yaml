@@ -1,15 +1,15 @@
 ProfitAndLoss:
   _section: income_statement
   Revenue:
-    keywords: ["Revenue", "Turnover", "Sales", "Total revenue", "Net revenue"]
+    keywords: ["Revenue", "Turnover", "Sales", "Total revenue", "Net revenue", "Total net sales", "Net sales"]
   Gross Profit/Loss:
     keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)", "Gross margin"]
   Profit/Loss Before Tax:
-    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax", "Income before provision for income taxes"]
+    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax", "Income before provision for income taxes", "Income before income taxes", "Earnings before tax", "EBT"]
   Net Profit/Loss:
-    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss"]
+    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss", "Net income"]
   Operating Profit/Loss:
-    keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)", "Operating income"]
+    keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)", "Operating income", "Income from operations"]
   Cost of Sales:
     sign: negative
     keywords: ["Cost of Sales", "Cost of Goods Sold", "Total Operating expenses", "Total Operating Staff Depreciation", "Cost of revenue"]
@@ -77,9 +77,9 @@ Liabilities:
 Equity:
   _section: balance_sheet
   Paid Up Capital:
-    keywords: ["Paid Up Capital", "Share Capital", "Issued capital", "Ordinary shares", "Common stock and additional paid-in capital", "Common stock"]
+    keywords: ["Paid Up Capital", "Share Capital", "Issued capital", "Ordinary shares", "Common stock and additional paid-in capital", "Common stock", "Share capital and additional paid-in capital", "Called up share capital"]
   Retained Earnings:
-    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)", "Other equity", "Accumulated deficit"]
+    keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)", "Other equity", "Accumulated deficit", "Retained earnings/(deficit)"]
   Total Equity:
     keywords: ["Total Equity", "Total Shareholders' Equity", "Total equity", "Equity attributable to owners", "Equity attributable to owner"]
 
