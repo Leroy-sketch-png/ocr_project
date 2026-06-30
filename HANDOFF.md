@@ -2,7 +2,7 @@
 
 **Branch:** V6
 **Date:** 2026-06-30
-**Status:** Pipeline stable and radically authenticated. Pre-pass section tagging implemented. Evaluation script hardened. Hallucination fallbacks stripped. Ground truths surgically audited. 100% Genuine Extraction achieved.
+**Status:** Pipeline stable and radically authenticated. Pre-pass section tagging implemented. Evaluation script hardened. Hallucination fallbacks stripped. Ground truths surgically audited. 100% Genuine Extraction achieved. README.md added. Repository is submission-ready.
 
 ## Verified Baseline After V6 Session
 **S1: 100% | S2: 100% | S3: 100%**
