@@ -70,8 +70,10 @@ def process_file(
         if isinstance(fields, dict):
             required_fields.extend(fields.keys())
 
-    year_col_x_map = detect_year_column(table_rows)
-    field_values = extract_fields(table_rows, blocks, field_defs, year_col_x_map, dpi_scale=global_dpi_scale)
+    year_col_x_map, full_year_map = detect_year_column(table_rows)
+    field_values = extract_fields(
+        table_rows, blocks, field_defs, year_col_x_map, full_year_map, dpi_scale=global_dpi_scale
+    )
     parse_numeric_fields(field_values)
 
     # Apply Mathematical Repair Engine (Math constraints + Targeted OCR).

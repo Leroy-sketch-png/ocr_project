@@ -147,13 +147,16 @@ def _cross_field_collision_check(results: dict) -> dict:
         del results[f]
     return results
 
-def detect_year_column(table_rows: List[TableRow]) -> Dict[int, float]:
+def detect_year_column(table_rows: List[TableRow]) -> Tuple[Dict[int, float], Dict[int, Dict[int, float]]]:
     """
-    Returns a mapping from page number to the X-coordinate (center) of the most recent year column.
-    Aggregates years across the top 10 rows of each page to handle split headers.
+    Returns:
+      primary_map: {page: x_coord_of_most_recent_year}
+      full_year_map: {page: {year: x_coord}}
     """
     page_year_x: Dict[int, float] = {}
+    full_year_map: Dict[int, Dict[int, float]] = {}
     last_seen_x = None
+    last_seen_full = None
     
     pages = sorted(list(set(row.page for row in table_rows)))
     
@@ -172,16 +175,18 @@ def detect_year_column(table_rows: List[TableRow]) -> Dict[int, float]:
                     center_x = (min_x + max_x) / 2.0
                     year_cells.append((center_x, int(clean)))
         
-        # Filter to unique years
         unique_years = {y[1]: y[0] for y in year_cells}
         if len(unique_years) >= 2:
             target_x = unique_years[max(unique_years.keys())]
             page_year_x[page] = target_x
+            full_year_map[page] = dict(unique_years)
             last_seen_x = target_x
+            last_seen_full = dict(unique_years)
         
         if page not in page_year_x and last_seen_x is not None:
             # Forward-fill X coordinate for pages without headers
             page_year_x[page] = last_seen_x
+            full_year_map[page] = last_seen_full
             
     # After the forward-fill loop, backward-fill pages that are still missing
     for page in reversed(pages):
@@ -189,9 +194,10 @@ def detect_year_column(table_rows: List[TableRow]) -> Dict[int, float]:
             # find the nearest subsequent page that has an X
             for future_page in sorted([p for p in page_year_x if p > page]):
                 page_year_x[page] = page_year_x[future_page]
+                full_year_map[page] = full_year_map.get(future_page, {})
                 break
             
-    return page_year_x
+    return page_year_x, full_year_map
 
 
 def extract_fields(
@@ -199,6 +205,7 @@ def extract_fields(
     text_blocks: List[TextBlock],
     config: Dict[str, Any],
     year_x_map: Dict[int, float] = None,
+    full_year_map: Dict[int, Dict[int, float]] = None,
     dpi_scale: float = 1.0,
 ) -> Dict[str, FieldValue]:
     results = {}
@@ -421,4 +428,73 @@ def extract_fields(
                 break
 
     results = _cross_field_collision_check(results)
+
+    multi_year_results = {}
+    for field_name, primary_fv in results.items():
+        if primary_fv is None or primary_fv.page is None or field_name == "Auditor's Opinion":
+            continue
+        years_on_page = full_year_map.get(primary_fv.page, {}) if full_year_map else {}
+        if len(years_on_page) < 2:
+            primary_year = max(years_on_page.keys()) if years_on_page else None
+            multi_year_results[field_name] = {primary_year: primary_fv} if primary_year else {"primary": primary_fv}
+            continue
+
+        matched_row = None
+        for row in table_rows:
+            if row.page == primary_fv.page and row.description == primary_fv.field_label:
+                matched_row = row
+                break
+
+        if matched_row is None:
+            primary_year = max(years_on_page.keys())
+            multi_year_results[field_name] = {primary_year: primary_fv}
+            continue
+
+        year_values = {}
+        for yr, yr_x in sorted(years_on_page.items()):
+            best_cell_idx = None
+            min_dist = float("inf")
+            for i, tokens in enumerate(matched_row.cell_tokens):
+                if not tokens: continue
+                if parse_numeric(matched_row.cells[i]) is None: continue
+                min_cx = min(t.bbox[0] for t in tokens)
+                max_cx = max(t.bbox[2] for t in tokens)
+                center_x = (min_cx + max_cx) / 2.0
+                dist = abs(center_x - yr_x)
+                if dist < min_dist and dist < (400.0 * dpi_scale):
+                    min_dist = dist
+                    best_cell_idx = i
+
+            if best_cell_idx is None:
+                continue
+
+            raw = matched_row.cells[best_cell_idx]
+            val = parse_numeric(raw)
+            field_cfg = flat_config.get(field_name, {})
+            if field_cfg.get("sign") == "negative" and val is not None and val > 0:
+                val = -val
+                if raw and not raw.startswith("-") and not "(" in raw:
+                    raw = "-" + raw
+
+            year_fv = FieldValue(
+                name=field_name,
+                value=val,
+                raw_text=raw,
+                page=matched_row.page,
+                tokens=matched_row.cell_tokens[best_cell_idx],
+                bbox=compute_bbox(matched_row.cell_tokens[best_cell_idx]),
+                valid=True,
+                reason=None,
+                row_candidates=[],
+                field_label=matched_row.description,
+                year=yr,
+            )
+            year_values[yr] = year_fv
+
+        multi_year_results[field_name] = year_values if year_values else {None: primary_fv}
+
+    for field_name, yr_map in multi_year_results.items():
+        if field_name in results and results[field_name] is not None:
+            results[field_name].multi_year = yr_map
+
     return results

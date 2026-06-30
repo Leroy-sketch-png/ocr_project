@@ -22,7 +22,7 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
         evidence_text = f.raw_text or ""
         page = f.page or 0
 
-    return {
+    base = {
         "field_label": f.field_label,
         "value": f.value,
         "raw_text": f.raw_text,
@@ -31,4 +31,17 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
         "bbox": f.bbox,
         "valid": f.valid,
         "reason": f.reason,
+        "year": getattr(f, "year", None),
     }
+
+    if getattr(f, "multi_year", None):
+        base["years"] = {
+            str(yr): {
+                "value": yfv.value,
+                "raw_text": yfv.raw_text,
+                "page": yfv.page,
+                "bbox": list(yfv.bbox) if yfv.bbox else None,
+            }
+            for yr, yfv in f.multi_year.items()
+        }
+    return base
