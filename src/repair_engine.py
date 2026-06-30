@@ -67,18 +67,15 @@ def _residual_ok(residual: Optional[float]) -> bool:
 # cascade-destroying correct fields to satisfy a broken equation.
 _MAX_REPAIR_DELTA_RATIO = 0.15  # 15% — tight enough to catch wrong-year extractions
 
-def _is_safe_repair(current_val: Optional[float], proposed_val: float) -> bool:
+def _is_safe_repair(current_val: Optional[float], proposed_val: float, repair_type: str = "digit_mutation") -> bool:
     """
-    Return True if replacing current_val with proposed_val is a plausible
-    OCR correction rather than a wrong-year or wrong-field substitution.
-    
-    Rule: If the proposed value is more than 15% different from the current
-    value, reject the repair. This prevents the engine from overwriting
-    trade receivables = 74,677 with 113,718 just because it satisfies
-    a broken equation — a 52% change is not an OCR error.
+    Returns True if the proposed repair is safe.
     """
+    if repair_type in ("sign_flip", "column_selection"):
+        return True
     if current_val is None or current_val == 0.0:
-        return True  # No current value — accept any proposed value
+        return True
+    
     delta_ratio = abs(proposed_val - current_val) / abs(current_val)
     return delta_ratio <= _MAX_REPAIR_DELTA_RATIO
 
@@ -327,7 +324,7 @@ def apply_math_repairs(
             continue
 
         # We have a non-zero residual. Try to repair the suspect fields.
-        best_repair = None  # (field_name, new_raw_text, new_float_val)
+        best_repair = None  # (field_name, new_raw_text, new_float_val, repair_type)
 
         # --- Phase 1: Combinatorial Math Search ---
         for suspect in suspects:
@@ -349,7 +346,7 @@ def apply_math_repairs(
 
                 new_res = compute_equation_residual(repaired_fields, target, summands)
                 if _residual_ok(new_res):
-                    best_repair = (suspect, cand, cand_val)
+                    best_repair = (suspect, cand, cand_val, "digit_mutation")
 
                 repaired_fields[suspect].value = old_val
                 if best_repair:
@@ -376,7 +373,7 @@ def apply_math_repairs(
                             repaired_fields, target, summands
                         )
                         if _residual_ok(new_res):
-                            best_repair = (suspect, cand_raw, cand_val)
+                            best_repair = (suspect, cand_raw, cand_val, "column_selection")
                             logger.debug(
                                 "  [COLUMN REPAIR] %s selected alternate column value: %s",
                                 suspect, cand_val,
@@ -408,15 +405,16 @@ def apply_math_repairs(
                             repaired_fields, target, summands
                         )
                         if _residual_ok(new_res):
-                            best_repair = (suspect, new_text, new_val)
+                            rtype = "sign_flip" if (old_val is not None and new_val is not None and old_val * new_val < 0) else "digit_mutation"
+                            best_repair = (suspect, new_text, new_val, rtype)
                         fv.value = old_val
                         if best_repair:
                             break
 
         if best_repair:
-            field, cand_raw, cand_val = best_repair
+            field, cand_raw, cand_val, repair_type = best_repair
             current_val = repaired_fields[field].value
-            if not _is_safe_repair(current_val, cand_val):
+            if not _is_safe_repair(current_val, cand_val, repair_type):
                 logger.debug(
                     "  [REPAIR REJECTED] %s: proposed %s would change %.1f%% from %s — too destructive",
                     field, cand_raw,
