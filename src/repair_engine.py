@@ -166,32 +166,6 @@ def apply_math_repairs(
                 if s not in repaired_fields or repaired_fields[s].value is None
             ]
 
-            if len(missing_suspects) > 1 and all_tokens is not None:
-                assume_zero_cands = {"Non-Current Assets", "Non-Current Liabilities"}
-                remaining_missing = [s for s in missing_suspects if s not in assume_zero_cands]
-                
-                if len(remaining_missing) == 1:
-                    missing = remaining_missing[0]
-                    all_others_valid = all(
-                        s in repaired_fields and repaired_fields[s].value is not None
-                        for s in suspects
-                        if s not in missing_suspects
-                    )
-                    
-                    if all_others_valid:
-                        # Artificially set the assume_zero_cands to 0.0
-                        for z in missing_suspects:
-                            if z in assume_zero_cands:
-                                if z in repaired_fields:
-                                    repaired_fields[z].value = 0.0
-                                    repaired_fields[z].raw_text = "0"
-                                    repaired_fields[z].reason = "assumed_zero_for_inverse_search"
-                                else:
-                                    repaired_fields[z] = _make_field_value(
-                                        z, 0.0, "0", None, "assumed_zero_for_inverse_search"
-                                    )
-                        missing_suspects = [missing]
-
             if len(missing_suspects) == 1 and all_tokens is not None:
                 missing = missing_suspects[0]
                 all_others_valid = all(
@@ -230,23 +204,8 @@ def apply_math_repairs(
                             expected_val = target_val - other_summands_sum
 
                         if abs(expected_val) < _RESIDUAL_TOLERANCE:
-                            if missing in repaired_fields:
-                                repaired_fields[missing].value = 0.0
-                                repaired_fields[missing].raw_text = "0"
-                                repaired_fields[missing].reason = "inferred_zero_from_equation"
-                            else:
-                                repaired_fields[missing] = FieldValue(
-                                    name=missing,
-                                    value=0.0,
-                                    raw_text="0",
-                                    page=None,
-                                    tokens=[],
-                                    bbox=None,
-                                    valid=True,
-                                    reason="inferred_zero_from_equation",
-                                )
-                            found_match = True
-                            break
+                            continue # DO NOT infer zero if it's missing!
+
 
                         found_match = False
                         for token in all_tokens:
@@ -292,31 +251,7 @@ def apply_math_repairs(
                         
                         if found_match:
                             break
-                            
-                        # Save the first combination for fallback if no tokens match any combination
-                        if best_combo is None:
-                            best_combo = cand_combo
-                            best_expected = expected_val
-                            
-                    if not found_match and best_combo is not None:
-                        if missing in repaired_fields:
-                            fv = repaired_fields[missing]
-                            fv.value = best_expected
-                            fv.raw_text = str(int(best_expected)) if best_expected.is_integer() else str(best_expected)
-                            fv.reason = "inferred_implicit_sum"
-                        else:
-                            repaired_fields[missing] = _make_field_value(
-                                missing,
-                                best_expected,
-                                str(int(best_expected)) if best_expected.is_integer() else str(best_expected),
-                                None,
-                                "inferred_implicit_sum",
-                            )
-                        for s, (raw, val) in zip(other_suspects, best_combo):
-                            if repaired_fields[s].value != val:
-                                repaired_fields[s].value = val
-                                repaired_fields[s].raw_text = raw
-                                repaired_fields[s].reason = "inverse_search_combinatorial_implicit"
+
 
         # Recompute residual after potential inverse-search fill
         residual = compute_equation_residual(repaired_fields, target, summands)

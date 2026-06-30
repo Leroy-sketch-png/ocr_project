@@ -69,16 +69,19 @@ def evaluate_sample(sample: Dict[str, Any]) -> Dict[str, Any]:
     mismatches: List[Dict[str, Any]] = []
 
     for field_name, expected_val in gt_data.items():
-        if expected_val is None:
-            continue
-        total_expected += 1
         extracted_data = fields.get(field_name, {})
         extracted_val = extracted_data.get("value")
+
+        if expected_val is not None:
+            total_expected += 1
         if extracted_val is not None:
             total_extracted += 1
-        if compare_values(extracted_val, expected_val):
-            total_correct += 1
-        else:
+
+        if expected_val is None and extracted_val is None:
+            # True Negative, does not affect Precision/Recall totals
+            continue
+        elif expected_val is None and extracted_val is not None:
+            # False Positive
             mismatches.append(
                 {
                     "field": field_name,
@@ -87,6 +90,29 @@ def evaluate_sample(sample: Dict[str, Any]) -> Dict[str, Any]:
                     "raw_text": extracted_data.get("raw_text"),
                 }
             )
+        elif expected_val is not None and extracted_val is None:
+            # False Negative
+            mismatches.append(
+                {
+                    "field": field_name,
+                    "expected": expected_val,
+                    "extracted": extracted_val,
+                    "raw_text": extracted_data.get("raw_text"),
+                }
+            )
+        else:
+            # Both have values, compare them
+            if compare_values(extracted_val, expected_val):
+                total_correct += 1
+            else:
+                mismatches.append(
+                    {
+                        "field": field_name,
+                        "expected": expected_val,
+                        "extracted": extracted_val,
+                        "raw_text": extracted_data.get("raw_text"),
+                    }
+                )
 
     precision = (total_correct / total_extracted * 100) if total_extracted else 0.0
     recall = (total_correct / total_expected * 100) if total_expected else 0.0
