@@ -274,7 +274,18 @@ def extract_fields(
                 should_update = False
 
                 if best_kw_score > current_best_score:
-                    should_update = True
+                    existing_val = None
+                    if field_name in results and results[field_name] is not None:
+                        existing_val = parse_numeric(results[field_name].raw_text)
+                    if (val is not None and abs(val) < 1e-6
+                            and existing_val is not None and abs(existing_val) > 1e-6):
+                        # New candidate is zero but existing is non-zero:
+                        # add as candidate only, do not replace primary value
+                        if field_name in results and results[field_name] is not None:
+                            results[field_name].row_candidates.append((raw_text, val))
+                        should_update = False
+                    else:
+                        should_update = True
                 elif best_kw_score == current_best_score:
                     if val is not None:
                         if field_name in results:
