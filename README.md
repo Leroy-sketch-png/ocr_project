@@ -4,7 +4,7 @@ A local, zero-cost pipeline for extracting structured financial data from PDF an
 
 ## What it does
 - Extracts 19 financial fields (P&L, Balance Sheet, Auditor Opinion)
-- Returns per-field evidence: page number, bounding box, confidence
+- Returns per-field evidence: page number, bounding box, raw text
 - Multi-year time series output per field
 - Section-aware extraction (prevents cross-statement field collisions)
 - Hallucination-free: only extracts values present on the page
