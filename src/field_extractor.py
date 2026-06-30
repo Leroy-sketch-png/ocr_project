@@ -183,6 +183,14 @@ def detect_year_column(table_rows: List[TableRow]) -> Dict[int, float]:
             # Forward-fill X coordinate for pages without headers
             page_year_x[page] = last_seen_x
             
+    # After the forward-fill loop, backward-fill pages that are still missing
+    for page in reversed(pages):
+        if page not in page_year_x:
+            # find the nearest subsequent page that has an X
+            for future_page in sorted([p for p in page_year_x if p > page]):
+                page_year_x[page] = page_year_x[future_page]
+                break
+            
     return page_year_x
 
 
@@ -244,16 +252,12 @@ def extract_fields(
                         best_cell_idx = closest_idx
                         
                 if best_cell_idx is None:
-                    # Fallback: pick the FIRST parseable numeric cell > 100 (Group 2023)
+                    best_abs = -1.0
                     for idx in range(len(row.cells)):
                         v = parse_numeric(row.cells[idx])
-                        if v is not None:
-                            if abs(v) > 100:
-                                best_cell_idx = idx
-                                break
-                            elif best_cell_idx is None:
-                                best_cell_idx = idx
-                            
+                        if v is not None and abs(v) > best_abs:
+                            best_abs = abs(v)
+                            best_cell_idx = idx
                     if best_cell_idx is None:
                         best_cell_idx = 0
 
