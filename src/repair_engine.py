@@ -22,14 +22,17 @@ EQUATIONS = [
     ("Total Equity", ["Paid Up Capital", "Retained Earnings"]),
     # Balance sheet identity
     ("Total Assets", ["Total Liabilities", "Total Equity"]),
+    # Income statement: PBT = Net Profit + Income Tax Expense
+    # Enables digit-mutation repair when OCR misreads a digit in PBT.
+    ("Profit/Loss Before Tax", ["Net Profit/Loss", "Income Tax Expense"]),
 ]
 
 CONFUSION_SET = {
     "0": ["8", "6", "9"],
-    "1": ["7"],
+    "1": ["7", "4"],
     "2": ["Z", "7"],
     "3": ["8"],
-    "4": ["A"],
+    "4": ["A", "1"],
     "5": ["S", "6", "8"],
     "6": ["5", "8", "0"],
     "7": ["1"],
@@ -124,6 +127,30 @@ def _make_field_value(
     )
 
 
+def _apply_null_cos_without_gp(fields: Dict[str, FieldValue]) -> None:
+    """
+    Null-CoS-without-GP rule:
+    If Cost of Sales was extracted but Gross Profit/Loss is absent (None),
+    the document has no gross profit concept — Cost of Sales is not meaningful
+    in this context and is likely a false positive from an operating expense row
+    (e.g. 'Purchase of services' in a services-only P&L).
+    Force Cost of Sales to None so downstream equations and exports are clean.
+    """
+    gp_fv = fields.get("Gross Profit/Loss")
+    cos_fv = fields.get("Cost of Sales")
+
+    gp_absent = gp_fv is None or gp_fv.value is None
+    cos_present = cos_fv is not None and cos_fv.value is not None
+
+    if gp_absent and cos_present:
+        logger.debug(
+            "[NULL-CoS] No Gross Profit found — nulling Cost of Sales (was %s)",
+            cos_fv.value,
+        )
+        fields["Cost of Sales"].value = None
+        fields["Cost of Sales"].reason = "nulled_no_gross_profit"
+
+
 def _apply_zero_ncl_inference(fields: Dict[str, FieldValue]) -> None:
     """
     Zero-NCL inference rule:
@@ -134,6 +161,12 @@ def _apply_zero_ncl_inference(fields: Dict[str, FieldValue]) -> None:
     liabilities section at all — the single liability line IS the total.
     We do NOT infer Non-Current Liabilities = 0 to avoid polluting the equation
     engine; we simply set Current = Total so the extractor reports it correctly.
+
+    IMPORTANT: This rule must only fire when NCL is truly absent from the document,
+    not merely unextracted. It is suppressed when optimization_mode is active because
+    inverse_search can solve CL = TL - NCL once NCL is found via keyword extraction
+    (e.g. a 'Borrowings' row in the NCL section). Firing the inference prematurely
+    would set CL = TL and make inverse_search solve NCL = 0 instead of the real value.
     """
     total_fv = fields.get("Total Liabilities")
     ncl_fv = fields.get("Non-Current Liabilities")
@@ -174,8 +207,10 @@ def apply_math_repairs(
       2. Sniper OCR — re-OCR the suspicious cell and test
       3. Inverse Search — if only one field is missing in an equation, solve for it
 
-    Pre-phase: Zero-NCL Inference — if no non-current liabilities exist and
-    current liabilities are also missing, infer CL = Total Liabilities.
+    Pre-phase A: Null-CoS-without-GP — if GP is absent, CoS is a false positive.
+    Pre-phase B: Zero-NCL Inference — only when optimization_mode is False;
+                 in optimization_mode, inverse_search handles CL/NCL resolution
+                 so premature inference would corrupt the equation engine.
     """
     repaired_fields = copy.deepcopy(fields)
 
@@ -185,8 +220,15 @@ def apply_math_repairs(
             logger.debug("Field: %s = %s", k, v.value)
     logger.debug("------------------------------------------")
 
-    # --- Pre-phase: Zero-NCL Inference ---
-    _apply_zero_ncl_inference(repaired_fields)
+    # --- Pre-phase A: Null CoS when Gross Profit is absent ---
+    _apply_null_cos_without_gp(repaired_fields)
+
+    # --- Pre-phase B: Zero-NCL Inference (non-optimization mode only) ---
+    # In optimization_mode, inverse_search resolves CL from TL - NCL after
+    # NCL is extracted (e.g. via 'Borrowings' keyword in NCL section).
+    # Firing this prematurely would corrupt that resolution.
+    if not optimization_mode:
+        _apply_zero_ncl_inference(repaired_fields)
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands

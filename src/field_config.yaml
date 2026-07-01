@@ -60,6 +60,15 @@ ProfitAndLoss:
       - "Purchase of services"
       - "Purchase of goods"
       # NOTE: Do NOT include 'Total Operating expenses' here — that is a different line item.
+      # NOTE: 'Purchase of services' is only meaningful when a Gross Profit line exists.
+      #       The repair engine nulls Cost of Sales when Gross Profit/Loss is absent.
+  Income Tax Expense:
+    _section: income_statement
+    keywords:
+      - "Income tax expense"
+      - "Income tax expenses"
+      - "Tax on result"
+      - "Tax expense"
 
 Assets:
   _section: balance_sheet
@@ -132,6 +141,9 @@ Liabilities:
       - "Lease liabilities"
       - "Long-term borrowings"
       - "Finance lease liabilities"
+      - "Borrowings"
+      # NOTE: 'Borrowings' is a single-item NCL section label (e.g. IFRS balance sheets).
+      # The page_section_map guards against matching CL-section Borrowings rows.
   Total Liabilities:
     keywords: ["Total Liabilities", "Total ilities"]
 
