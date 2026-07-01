@@ -1,17 +1,12 @@
 """Evaluation script for the OCR extraction pipeline.
 
 Scoring rules:
-- expected=X,    extracted=X    -> correct        (score 100)
-- expected=X,    extracted=Y    -> wrong           (score 0)
-- expected=None, extracted=None -> correct         (score 100)
-- expected=None, extracted=X   -> false positive   (score 0)
-- expected=X,    extracted=None -> missing         (score 0)
+- Single-value GT (scalar): same as before, compare vs extraction primary value
+- Year-keyed GT (dict): compare each year's value vs extraction years dict
+- Null GT: field should be absent or primary value None
 
 Numeric tolerance:
   abs(diff) <= 1.0  OR  rel(diff) <= 0.01%
-  This keeps the scorer consistent across documents denominated in
-  thousands vs tens of millions (avoids the old flat ±1.0 being
-  trivially loose on large-scale documents).
 """
 import json
 import os
@@ -26,8 +21,8 @@ SAMPLES = {
     "SAMPLE2": Path("../AA_SAMPLE2.pdf"),
     "SAMPLE3": Path("../AA_SAMPLE3.pdf"),
 }
-_ABS_TOLERANCE = 1.0      # always accept diff within 1 unit
-_REL_TOLERANCE = 1e-4     # accept diff within 0.01% of expected magnitude
+_ABS_TOLERANCE = 1.0
+_REL_TOLERANCE = 1e-4
 
 
 def load_ground_truth() -> Dict[str, Any]:
@@ -47,17 +42,14 @@ def run_pipeline(pdf_path: Path) -> Dict[str, Any]:
 
 
 def score_field(expected: Any, extracted: Any) -> int:
-    """Return 100 (correct) or 0 (wrong / missing / false-positive)."""
     if expected is None and extracted is None:
         return 100
     if expected is None and extracted is not None:
-        return 0   # false positive
+        return 0
     if expected is not None and extracted is None:
-        return 0   # missing
-    # String fields (e.g. Auditor's Opinion)
+        return 0
     if isinstance(expected, str) or isinstance(extracted, str):
         return 100 if str(expected) == str(extracted) else 0
-    # Numeric: accept if within absolute OR relative tolerance
     diff = abs(float(extracted) - float(expected))
     rel  = diff / max(abs(float(expected)), 1.0)
     return 100 if (diff <= _ABS_TOLERANCE or rel <= _REL_TOLERANCE) else 0
@@ -79,28 +71,59 @@ def evaluate() -> None:
 
         for field_name, expected_val in sample_gt.items():
             raw_extracted = extracted.get(field_name)
-            if isinstance(raw_extracted, dict):
-                extracted_val = raw_extracted.get("value")
+            ext_years = (raw_extracted or {}).get("years", {})
+
+            if isinstance(expected_val, dict):
+                # Year-keyed GT
+                for yr_str, year_expected in expected_val.items():
+                    yr_key = str(yr_str)
+                    year_extracted = None
+                    if yr_key in ext_years:
+                        year_extracted = ext_years[yr_key].get("value")
+
+                    score = score_field(year_expected, year_extracted)
+                    total_correct += score // 100
+                    total_fields += 1
+
+                    status = "OK" if score == 100 else "FAIL"
+                    tag = ""
+                    if score == 0:
+                        if year_expected is None and year_extracted is not None:
+                            tag = " [FALSE POSITIVE]"
+                        elif year_expected is not None and year_extracted is None:
+                            tag = " [MISSING]"
+                        elif year_expected is None and year_extracted is None:
+                            tag = ""  # both None = correct, already scored 100 above
+                        else:
+                            tag = " [WRONG VALUE]"
+                    print(
+                        f"  {status} {field_name} [{yr_str}]: expected={year_expected} "
+                        f"extracted={year_extracted}{tag}"
+                    )
             else:
-                extracted_val = raw_extracted
-
-            score = score_field(expected_val, extracted_val)
-            total_correct += score // 100
-            total_fields += 1
-
-            status = "OK" if score == 100 else "FAIL"
-            tag = ""
-            if score == 0:
-                if expected_val is None and extracted_val is not None:
-                    tag = " [FALSE POSITIVE]"
-                elif expected_val is not None and extracted_val is None:
-                    tag = " [MISSING]"
+                # Scalar GT (null, string, number) — check primary value
+                if isinstance(raw_extracted, dict):
+                    extracted_val = raw_extracted.get("value")
                 else:
-                    tag = " [WRONG VALUE]"
-            print(
-                f"  {status} {field_name}: expected={expected_val} "
-                f"extracted={extracted_val}{tag}"
-            )
+                    extracted_val = raw_extracted
+
+                score = score_field(expected_val, extracted_val)
+                total_correct += score // 100
+                total_fields += 1
+
+                status = "OK" if score == 100 else "FAIL"
+                tag = ""
+                if score == 0:
+                    if expected_val is None and extracted_val is not None:
+                        tag = " [FALSE POSITIVE]"
+                    elif expected_val is not None and extracted_val is None:
+                        tag = " [MISSING]"
+                    else:
+                        tag = " [WRONG VALUE]"
+                print(
+                    f"  {status} {field_name}: expected={expected_val} "
+                    f"extracted={extracted_val}{tag}"
+                )
 
     print(f"\n--- TOTAL: {total_correct}/{total_fields} correct ---")
     if total_fields:

@@ -1,65 +1,184 @@
 {
   "SAMPLE1": {
-    "Revenue": 40580.0,
-    "Cost of Sales": -16885.0,
-    "Gross Profit/Loss": 23695.0,
+    "Revenue": {
+      "2024": 101563.0,
+      "2025": 40580.0
+    },
+    "Cost of Sales": {
+      "2024": -86254.0,
+      "2025": -16885.0
+    },
+    "Gross Profit/Loss": {
+      "2024": 15309.0,
+      "2025": 23695.0
+    },
     "Operating Profit/Loss": null,
-    "Profit/Loss Before Tax": -87557.0,
-    "Net Profit/Loss": -87557.0,
-    "Cash and Cash Equivalents": 18742.0,
-    "Trade Receivables": 20444.0,
+    "Profit/Loss Before Tax": {
+      "2024": -52546.0,
+      "2025": -87557.0
+    },
+    "Net Profit/Loss": {
+      "2024": -52546.0,
+      "2025": -87557.0
+    },
+    "Cash and Cash Equivalents": {
+      "2024": 13916.0,
+      "2025": 18742.0
+    },
+    "Trade Receivables": {
+      "2024": 26605.0,
+      "2025": 20444.0
+    },
     "Current Assets": 39186.0,
     "Plant and Equipment": null,
     "Non-Current Assets": null,
-    "Total Assets": 39186.0,
+    "Total Assets": {
+      "2024": 40521.0,
+      "2025": 39186.0
+    },
     "Current Liabilities": 27276.0,
     "Non-Current Liabilities": null,
-    "Total Liabilities": 27276.0,
-    "Paid Up Capital": 350000.0,
-    "Retained Earnings": -374090.0,
-    "Total Equity": 11910.0,
+    "Total Liabilities": {
+      "2024": 7054.0,
+      "2025": 27276.0
+    },
+    "Paid Up Capital": {
+      "2024": 300000.0,
+      "2025": 350000.0
+    },
+    "Retained Earnings": {
+      "2024": -286533.0,
+      "2025": -374090.0
+    },
+    "Total Equity": {
+      "2024": 33467.0,
+      "2025": 11910.0
+    },
     "Auditor's Opinion": "Unqualified"
   },
   "SAMPLE2": {
-    "Revenue": 97852971.0,
+    "Revenue": {
+      "2023": 83876837.0,
+      "2024": 97852971.0
+    },
     "Cost of Sales": null,
     "Gross Profit/Loss": null,
-    "Operating Profit/Loss": 3951214.0,
-    "Profit/Loss Before Tax": 11095953.0,
-    "Net Profit/Loss": 9915794.0,
-    "Cash and Cash Equivalents": 10699410.0,
-    "Trade Receivables": 442531.0,
-    "Current Assets": 74778518.0,
-    "Plant and Equipment": 47769.0,
-    "Non-Current Assets": 58619.0,
-    "Total Assets": 74837137.0,
-    "Current Liabilities": 24864056.0,
+    "Operating Profit/Loss": {
+      "2023": 6187592.0,
+      "2024": 3951214.0
+    },
+    "Profit/Loss Before Tax": {
+      "2023": 13179431.0,
+      "2024": 11095953.0
+    },
+    "Net Profit/Loss": {
+      "2023": 11646955.0,
+      "2024": 9915794.0
+    },
+    "Cash and Cash Equivalents": {
+      "2023": 8659837.0,
+      "2024": 10699410.0
+    },
+    "Trade Receivables": {
+      "2023": 240410.0,
+      "2024": 442531.0
+    },
+    "Current Assets": {
+      "2023": 75427091.0,
+      "2024": 74778518.0
+    },
+    "Plant and Equipment": {
+      "2023": 82452.0,
+      "2024": 47769.0
+    },
+    "Non-Current Assets": {
+      "2023": 91030.0,
+      "2024": 58619.0
+    },
+    "Total Assets": {
+      "2023": 75518121.0,
+      "2024": 74837137.0
+    },
+    "Current Liabilities": {
+      "2023": 34260834.0,
+      "2024": 24864056.0
+    },
     "Non-Current Liabilities": null,
-    "Total Liabilities": 24864056.0,
-    "Paid Up Capital": 1000000.0,
-    "Retained Earnings": 48008912.0,
-    "Total Equity": 49973081.0,
+    "Total Liabilities": {
+      "2023": 34260834.0,
+      "2024": 24864056.0
+    },
+    "Paid Up Capital": {
+      "2023": 1000000.0,
+      "2024": 1000000.0
+    },
+    "Retained Earnings": {
+      "2023": 39293118.0,
+      "2024": 48008912.0
+    },
+    "Total Equity": {
+      "2023": 41257287.0,
+      "2024": 49973081.0
+    },
     "Auditor's Opinion": "Unqualified"
   },
   "SAMPLE3": {
-    "Revenue": 1782538.0,
-    "Cost of Sales": -1463028.0,
-    "Gross Profit/Loss": 319510.0,
+    "Revenue": {
+      "2023": 1782538.0
+    },
+    "Cost of Sales": {
+      "2023": -1463028.0
+    },
+    "Gross Profit/Loss": {
+      "2023": 319510.0
+    },
     "Operating Profit/Loss": null,
-    "Profit/Loss Before Tax": 256484.0,
-    "Net Profit/Loss": 248084.0,
-    "Cash and Cash Equivalents": 1369838.0,
-    "Trade Receivables": 74677.0,
+    "Profit/Loss Before Tax": {
+      "2022": -29198.0,
+      "2023": 256484.0
+    },
+    "Net Profit/Loss": {
+      "2022": -39632.0,
+      "2023": 248084.0
+    },
+    "Cash and Cash Equivalents": {
+      "2022": 972064.0,
+      "2023": 1369838.0
+    },
+    "Trade Receivables": {
+      "2022": 113718.0,
+      "2023": 74677.0
+    },
     "Current Assets": 1444515.0,
-    "Plant and Equipment": 1.0,
+    "Plant and Equipment": {
+      "2022": 1.0,
+      "2023": 1.0
+    },
     "Non-Current Assets": 5596.0,
-    "Total Assets": 1450111.0,
+    "Total Assets": {
+      "2022": 1086669.0,
+      "2023": 1450111.0
+    },
     "Current Liabilities": 818988.0,
-    "Non-Current Liabilities": 1463.0,
-    "Total Liabilities": 820451.0,
-    "Paid Up Capital": 72338.0,
-    "Retained Earnings": 557322.0,
-    "Total Equity": 629660.0,
+    "Non-Current Liabilities": {
+      "2023": 1463.0
+    },
+    "Total Liabilities": {
+      "2022": 705093.0,
+      "2023": 820451.0
+    },
+    "Paid Up Capital": {
+      "2022": 72338.0,
+      "2023": 72338.0
+    },
+    "Retained Earnings": {
+      "2022": 309238.0,
+      "2023": 557322.0
+    },
+    "Total Equity": {
+      "2022": 381576.0,
+      "2023": 629660.0
+    },
     "Auditor's Opinion": "Qualified"
   }
 }
