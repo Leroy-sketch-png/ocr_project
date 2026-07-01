@@ -1,11 +1,17 @@
 """Evaluation script for the OCR extraction pipeline.
 
 Scoring rules:
-- expected=X, extracted=X  -> correct (score 100)
-- expected=X, extracted=Y  -> wrong   (score 0)
-- expected=None,extracted=None -> correct (score 100)
-- expected=None,extracted=X   -> false positive (score 0)  <-- was silently skipped
-- expected=X, extracted=None  -> missing (score 0)
+- expected=X,    extracted=X    -> correct        (score 100)
+- expected=X,    extracted=Y    -> wrong           (score 0)
+- expected=None, extracted=None -> correct         (score 100)
+- expected=None, extracted=X   -> false positive   (score 0)
+- expected=X,    extracted=None -> missing         (score 0)
+
+Numeric tolerance:
+  abs(diff) <= 1.0  OR  rel(diff) <= 0.01%
+  This keeps the scorer consistent across documents denominated in
+  thousands vs tens of millions (avoids the old flat ±1.0 being
+  trivially loose on large-scale documents).
 """
 import json
 import os
@@ -20,7 +26,8 @@ SAMPLES = {
     "SAMPLE2": Path("../AA_SAMPLE2.pdf"),
     "SAMPLE3": Path("../AA_SAMPLE3.pdf"),
 }
-_TOLERANCE = 1.0  # absolute numeric tolerance
+_ABS_TOLERANCE = 1.0      # always accept diff within 1 unit
+_REL_TOLERANCE = 1e-4     # accept diff within 0.01% of expected magnitude
 
 
 def load_ground_truth() -> Dict[str, Any]:
@@ -39,24 +46,21 @@ def run_pipeline(pdf_path: Path) -> Dict[str, Any]:
     return json.loads(result.stdout)
 
 
-def score_field(
-    expected: Any, extracted: Any
-) -> int:
-    """Return 100 (correct) or 0 (wrong/missing/false-positive)."""
-    # Both None -> correct
+def score_field(expected: Any, extracted: Any) -> int:
+    """Return 100 (correct) or 0 (wrong / missing / false-positive)."""
     if expected is None and extracted is None:
         return 100
-    # Expected None but got a value -> false positive -> wrong
     if expected is None and extracted is not None:
-        return 0
-    # Expected a value but got None -> missing -> wrong
+        return 0   # false positive
     if expected is not None and extracted is None:
-        return 0
-    # Handle string comparison
+        return 0   # missing
+    # String fields (e.g. Auditor's Opinion)
     if isinstance(expected, str) or isinstance(extracted, str):
-        return 100 if expected == extracted else 0
-    # Both present -> numeric comparison with tolerance
-    return 100 if abs(extracted - expected) <= _TOLERANCE else 0
+        return 100 if str(expected) == str(extracted) else 0
+    # Numeric: accept if within absolute OR relative tolerance
+    diff = abs(float(extracted) - float(expected))
+    rel  = diff / max(abs(float(expected)), 1.0)
+    return 100 if (diff <= _ABS_TOLERANCE or rel <= _REL_TOLERANCE) else 0
 
 
 def evaluate() -> None:

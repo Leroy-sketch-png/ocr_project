@@ -1,159 +1,126 @@
 import argparse
 import json
-import os
+import logging
+import sys
 from pathlib import Path
-from typing import Any, Dict, List
 
-from .exporter import field_value_to_dict
-from .field_extractor import extract_fields, load_field_config, detect_year_column
+from .field_extractor import detect_year_column, extract_fields, load_field_config
 from .image_processor import preprocess_image
 from .io_loader import load_document
+from .models import CONFIDENCE_HIGH
 from .ocr_engine import get_ocr_engine
 from .repair_engine import apply_math_repairs
-from .runtime_config import (
-    RuntimeConfigurationError,
-    inspect_runtime,
-    validate_runtime,
-)
-from .table_builder import build_table_rows, build_text_blocks, detect_page_sections
-from .validator import is_ocr_failure, validate_fields
-from .value_parser import parse_numeric_fields
+from .table_builder import build_table_rows, build_text_blocks
+from .validator import validate_fields
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_CONFIG = Path(__file__).parent / "field_config.yaml"
 
 
 def process_file(
-    path: str,
-    config_path: str,
-    engine_name: str = "tesseract",
+    pdf_path: str,
+    config_path: str = str(_DEFAULT_CONFIG),
     optimization_mode: bool = False,
-) -> Dict[str, Any]:
-    try:
-        validate_runtime(engine_name)
-        doc = load_document(path)
-    except RuntimeConfigurationError as e:
-        return {
-            "error": str(e),
-            "remediation": [
-                "Install Tesseract OCR and ensure it is on PATH, or set TESSERACT_CMD.",
-                "If you selected --engine paddle, install the optional paddleocr package.",
-            ],
-        }
-    except Exception as e:
-        return {"error": str(e)}
+) -> dict:
+    config = load_field_config(config_path)
 
-    ocr_engine = get_ocr_engine(engine_name)
-
-    # Preprocess each page once and cache the result.
-    # The cached image is reused by both the OCR engine and the repair engine,
-    # avoiding a second preprocessing pass on the same page.
-    processed_images: Dict[int, Any] = {
-        page_idx: preprocess_image(pil_img) for page_idx, pil_img, _ in doc.pages
-    }
-    
-    global_dpi_scale = doc.pages[0][2] if doc.pages else 1.0
+    doc = load_document(pdf_path)
+    engine = get_ocr_engine("tesseract")
 
     all_tokens = []
-    for page_idx, processed_img in processed_images.items():
-        page_tokens = ocr_engine.recognize_page(processed_img, page_idx)
-        all_tokens.extend(page_tokens)
+    processed_images = {}
+    dpi_scale = 1.0
 
-    if is_ocr_failure(all_tokens):
-        return {"error": "OCR extraction failed"}
+    for page_idx, (page_num, page_image, page_dpi_scale) in enumerate(doc.pages):
+        processed = preprocess_image(page_image)
+        processed_images[page_idx] = processed
+        tokens = engine.recognize_page(processed, page_idx)
+        all_tokens.extend(tokens)
+        if page_idx == 0:
+            dpi_scale = page_dpi_scale
 
-    blocks = build_text_blocks(all_tokens)
-    page_section_map = detect_page_sections(blocks)
-    table_rows = build_table_rows(blocks, dpi_scale=global_dpi_scale)
+    text_blocks = build_text_blocks(all_tokens)
+    table_rows = build_table_rows(text_blocks)
 
-    field_defs = load_field_config(config_path)
+    from .table_builder import detect_page_sections
+    page_section_map = detect_page_sections(table_rows, text_blocks)
 
-    # Required fields derived from config
-    required_fields: List[str] = []
-    for sec, fields in field_defs.items():
-        if isinstance(fields, dict):
-            required_fields.extend([k for k in fields.keys() if not k.startswith("_")])
+    # detect_year_column now returns three values
+    year_x_map, full_year_map, col_pitch_map = detect_year_column(table_rows)
 
-    year_col_x_map, full_year_map = detect_year_column(table_rows)
-    field_values = extract_fields(
-        table_rows, blocks, field_defs, year_col_x_map, full_year_map, 
-        page_section_map=page_section_map, dpi_scale=global_dpi_scale
+    fields = extract_fields(
+        table_rows,
+        text_blocks,
+        config,
+        year_x_map=year_x_map,
+        full_year_map=full_year_map,
+        page_section_map=page_section_map,
+        dpi_scale=dpi_scale,
+        col_pitch_map=col_pitch_map,
     )
-    parse_numeric_fields(field_values)
 
-    # Apply Mathematical Repair Engine (Math constraints + Targeted OCR).
-    # Passes the already-cached processed_images — no re-preprocessing.
-    field_values = apply_math_repairs(
-        field_values,
+    # Build flat_config for structural NCL guard in repair engine
+    flat_config = {}
+    for section, section_fields in config.items():
+        if not isinstance(section_fields, dict):
+            continue
+        for field_name, details in section_fields.items():
+            if field_name.startswith("_"):
+                continue
+            if isinstance(details, dict):
+                flat_config[field_name] = {"keywords": details.get("keywords", []), **details}
+            else:
+                flat_config[field_name] = {"keywords": details}
+
+    # Parse raw_text -> value on every extracted field
+    from .value_parser import parse_numeric
+    for fv in fields.values():
+        if fv is not None and fv.value is None and fv.raw_text is not None:
+            fv.value = parse_numeric(fv.raw_text)
+            if fv.value is not None:
+                fv.valid = True
+                fv.confidence = CONFIDENCE_HIGH
+
+    repaired = apply_math_repairs(
+        fields,
         processed_images,
-        all_tokens,
+        all_tokens=all_tokens if optimization_mode else None,
         optimization_mode=optimization_mode,
+        dpi_scale=dpi_scale,
+        page_section_map=page_section_map,
+        table_rows=table_rows,
+        flat_config=flat_config,
     )
 
-    validation_result = validate_fields(field_values, required_fields)
+    validated = validate_fields(repaired)
 
-    output: Dict[str, Any] = {
-        name: field_value_to_dict(fv) for name, fv in field_values.items()
-    }
-    if "error" in validation_result:
-        output["error"] = validation_result["error"]
-    return output
+    from .exporter import export_fields
+    return export_fields(validated)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Offline OCR Pipeline")
-    parser.add_argument("file_path", nargs="?", help="Path to PDF or Image file")
-    parser.add_argument(
-        "--config",
-        default=os.path.join(os.path.dirname(__file__), "field_config.yaml"),
-    )
-    parser.add_argument("--engine", default="tesseract")
-    parser.add_argument(
-        "--check-env",
-        dest="check_env",
-        action="store_true",
-        help="Check local OCR prerequisites and exit without processing a file.",
-    )
-    parser.add_argument(
-        "--doctor",
-        dest="check_env",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--optimize",
-        dest="optimize",
-        action="store_true",
-        help="Enable Constraint-Guided Optimization",
-    )
-    parser.add_argument(
-        "--extreme",
-        dest="optimize",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--output",
-        help="Write the JSON result to a file in addition to stdout.",
-    )
-
+def main():
+    parser = argparse.ArgumentParser(description="OCR financial document extractor")
+    parser.add_argument("pdf", help="Path to the PDF file")
+    parser.add_argument("--config", default=str(_DEFAULT_CONFIG), help="Field config YAML")
+    parser.add_argument("--output", help="Write JSON output to this file instead of stdout")
+    parser.add_argument("--optimize", action="store_true", help="Enable optimization mode")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
-    if args.check_env:
-        print(json.dumps(inspect_runtime(args.engine), indent=2))
-        return
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+    else:
+        logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
-    if not args.file_path:
-        parser.error("file_path is required unless --check-env is used")
+    result = process_file(args.pdf, args.config, optimization_mode=args.optimize)
 
-    result = process_file(
-        args.file_path, args.config, args.engine, optimization_mode=args.optimize
-    )
-    rendered = json.dumps(result, indent=2, ensure_ascii=False)
-
+    output_json = json.dumps(result, indent=2, ensure_ascii=False)
     if args.output:
-        output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(rendered + "\n", encoding="utf-8")
-
-    print(rendered)
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(output_json)
+    else:
+        print(output_json)
 
 
 if __name__ == "__main__":

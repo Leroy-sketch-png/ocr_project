@@ -33,6 +33,29 @@ EQUATIONS = [
     ("Profit/Loss Before Tax",   ["Net Profit/Loss", "Income Tax Expense"]),
 ]
 
+# Section each income-statement / balance-sheet field belongs to.
+# Used by Phase 1.6 to reject tokens found in the wrong document section.
+_FIELD_SECTIONS: Dict[str, str] = {
+    "Revenue":                  "income_statement",
+    "Cost of Sales":            "income_statement",
+    "Gross Profit/Loss":        "income_statement",
+    "Operating Profit/Loss":    "income_statement",
+    "Profit/Loss Before Tax":   "income_statement",
+    "Net Profit/Loss":          "income_statement",
+    "Income Tax Expense":       "income_statement",
+    "Cash and Cash Equivalents": "balance_sheet",
+    "Trade Receivables":        "balance_sheet",
+    "Current Assets":           "balance_sheet",
+    "Non-Current Assets":       "balance_sheet",
+    "Total Assets":             "balance_sheet",
+    "Current Liabilities":      "balance_sheet",
+    "Non-Current Liabilities":  "balance_sheet",
+    "Total Liabilities":        "balance_sheet",
+    "Paid Up Capital":          "balance_sheet",
+    "Retained Earnings":        "balance_sheet",
+    "Total Equity":             "balance_sheet",
+}
+
 # Common single-character OCR confusions.
 # Each key maps to the characters it is frequently misread as.
 CONFUSION_SET: Dict[str, List[str]] = {
@@ -156,36 +179,62 @@ def _apply_null_cos_without_gp(fields: Dict[str, FieldValue]) -> None:
         cos.confidence = CONFIDENCE_LOW
 
 
-def _apply_zero_ncl_inference(fields: Dict[str, FieldValue]) -> None:
+def _apply_zero_ncl_inference(
+    fields: Dict[str, FieldValue],
+    table_rows=None,
+    flat_config=None,
+) -> None:
     """Infer Current Liabilities = Total Liabilities when NCL is truly absent.
 
     Handles documents (e.g. early-stage companies) where there are no
     non-current liabilities at all — the single liabilities line IS the total.
-    Fires unconditionally. The function itself is a no-op if NCL already has a value.
+    Fires unconditionally but is a no-op if NCL already has a value.
+
+    Structural guard: if any balance-sheet table row scores >= 60 against
+    any NCL keyword, NCL is structurally present but merely unmatched at the
+    normal 82 threshold. In that case we do NOT infer CL=TL, because doing so
+    would silently corrupt the balance sheet.
     """
     tl = fields.get("Total Liabilities")
     ncl = fields.get("Non-Current Liabilities")
     cl = fields.get("Current Liabilities")
-    if (
+    if not (
         tl is not None and tl.value is not None
         and (ncl is None or ncl.value is None)
         and (cl is None or cl.value is None)
     ):
-        logger.debug(
-            "[ZERO-NCL] Inferring Current Liabilities = Total Liabilities = %s",
-            tl.value,
-        )
-        fields["Current Liabilities"] = FieldValue(
-            name="Current Liabilities",
-            value=tl.value,
-            raw_text=tl.raw_text,
-            page=tl.page,
-            tokens=tl.tokens,
-            bbox=tl.bbox,
-            valid=True,
-            reason="zero_ncl_inference",
-            confidence=CONFIDENCE_LOW,
-        )
+        return
+
+    # Structural guard — look for any loosely-matching NCL row in the document.
+    if table_rows is not None and flat_config is not None:
+        ncl_cfg = flat_config.get("Non-Current Liabilities", {})
+        ncl_kws = ncl_cfg.get("keywords", []) if isinstance(ncl_cfg, dict) else []
+        from .field_extractor import compute_match_score
+        for row in table_rows:
+            desc_lower = row.description.lower()
+            for kw in ncl_kws:
+                if compute_match_score(kw, desc_lower) >= 60:
+                    logger.debug(
+                        "[ZERO-NCL] Suppressed — structural NCL candidate found: '%s'",
+                        row.description,
+                    )
+                    return
+
+    logger.debug(
+        "[ZERO-NCL] Inferring Current Liabilities = Total Liabilities = %s",
+        tl.value,
+    )
+    fields["Current Liabilities"] = FieldValue(
+        name="Current Liabilities",
+        value=tl.value,
+        raw_text=tl.raw_text,
+        page=tl.page,
+        tokens=tl.tokens,
+        bbox=tl.bbox,
+        valid=True,
+        reason="zero_ncl_inference",
+        confidence=CONFIDENCE_LOW,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -197,18 +246,26 @@ def apply_math_repairs(
     processed_images: Dict[int, Any],
     all_tokens: List[Token] = None,
     optimization_mode: bool = False,
+    dpi_scale: float = 1.0,
+    page_section_map: Dict[int, str] = None,
+    table_rows=None,
+    flat_config=None,
 ) -> Dict[str, FieldValue]:
     """Apply three-phase math repair to extracted fields.
 
     Phase 0A — Null-CoS-without-GP: prevent false CoS when no GP line exists.
     Phase 0B — Zero-NCL inference: CL = TL when NCL is structurally absent.
-               Fires unconditionally. The function itself is a no-op if NCL already has a value.
+               Guarded: suppressed if any row loosely matches an NCL keyword.
     Phase 1  — Digit mutation: flip one OCR-confused character per field.
     Phase 1.5 — Column selection: try alternate column values from the row.
+    Phase 1.6 — Joint solver (optimization_mode): one field missing + one field
+               has a misread digit — mutate the digit, derive the implied missing
+               value, scan tokens (single + split-merge) for a match.
+               Section-guard: matched token must be on the correct page section.
     Phase 2  — Sniper OCR: re-OCR the suspicious bounding box.
-    Phase 3  — Inverse search: if exactly one field is missing in an equation,
+    Phase 3  — Inverse search (optimization_mode): exactly one field missing —
                scan all tokens for the value that closes the equation.
-               (optimization_mode only)
+               Split-token merge pass included.
     """
     repaired = copy.deepcopy(fields)
 
@@ -218,11 +275,15 @@ def apply_math_repairs(
                 logger.debug("[REPAIR-IN] %s = %s (conf=%s)", k, v.value,
                              getattr(v, 'confidence', '?'))
 
+    # DPI-aware geometry thresholds for split-token merge passes
+    _Y_MERGE_THRESH = 15 * dpi_scale
+    _X_MERGE_GAP_MAX = 60 * dpi_scale
+
     # Phase 0A
     _apply_null_cos_without_gp(repaired)
 
-    # Phase 0B — zero-NCL inference
-    _apply_zero_ncl_inference(repaired)
+    # Phase 0B — zero-NCL inference with structural guard
+    _apply_zero_ncl_inference(repaired, table_rows=table_rows, flat_config=flat_config)
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands
@@ -261,7 +322,6 @@ def apply_math_repairs(
                         for token in all_tokens:
                             cv = parse_numeric(token.text)
                             if cv is not None and abs(cv - expected) < 0.5:
-                                # Update any combinatorial-swapped fields
                                 for s, (raw, val) in zip(others, combo):
                                     if repaired[s].value != val:
                                         repaired[s].value = val
@@ -270,7 +330,6 @@ def apply_math_repairs(
                                         repaired[s].reason = "inverse_search_combinatorial"
                                         repaired[s].confidence = CONFIDENCE_MEDIUM
                                         logger.debug("  [INV-COMBO] %s -> %s", s, val)
-                                # Fill the missing field
                                 if m in repaired:
                                     repaired[m].value = cv
                                     repaired[m].raw_text = token.text
@@ -287,20 +346,20 @@ def apply_math_repairs(
                                 logger.debug("  [INV] %s = %s", m, cv)
                                 break
                         else:
-                            # Phase 3 continuation: split-token merge pass
-                            # Handles values OCR split into adjacent tokens (e.g. "1180" + "159" → 1180159)
+                            # Split-token merge pass
                             if m not in repaired or repaired[m].value is None:
-                                # Build a sorted list of tokens for merge scanning
-                                sorted_tokens = sorted(all_tokens, key=lambda t: (t.page, t.bbox[1], t.bbox[0]))
+                                sorted_tokens = sorted(
+                                    all_tokens,
+                                    key=lambda t: (t.page, t.bbox[1], t.bbox[0]),
+                                )
                                 for i in range(len(sorted_tokens) - 1):
                                     ta = sorted_tokens[i]
                                     tb = sorted_tokens[i + 1]
-                                    # Must be same page, vertically aligned, small horizontal gap
                                     if ta.page != tb.page:
                                         continue
                                     y_overlap = abs(ta.bbox[1] - tb.bbox[1])
                                     x_gap = tb.bbox[0] - ta.bbox[2]
-                                    if y_overlap > 15 or x_gap < 0 or x_gap > 60:
+                                    if y_overlap > _Y_MERGE_THRESH or x_gap < 0 or x_gap > _X_MERGE_GAP_MAX:
                                         continue
                                     merged_text = ta.text + tb.text
                                     cv = parse_numeric(merged_text)
@@ -326,7 +385,10 @@ def apply_math_repairs(
                                                 m, cv, merged_text, merged_token,
                                                 "inverse_search_merged", CONFIDENCE_MEDIUM,
                                             )
-                                        logger.debug("  [INV-MERGE] %s = %s (from '%s'+'%s')", m, cv, ta.text, tb.text)
+                                        logger.debug(
+                                            "  [INV-MERGE] %s = %s (from '%s'+'%s')",
+                                            m, cv, ta.text, tb.text,
+                                        )
                                         break
                                 else:
                                     continue
@@ -334,23 +396,27 @@ def apply_math_repairs(
 
         best_repair = None
 
-        # Phase 1.6: joint mutation with missing field search
-        # Handles the catch-22 where one field is wrong (misread digit) and another is missing (None),
-        # so neither can be corrected alone. We speculatively mutate the wrong field, compute the expected
-        # missing value to balance the equation, and scan all_tokens for a match.
+        # Phase 1.6: joint solver — one field None, one field has a misread digit.
+        # Speculatively mutates each present field, derives the implied missing value,
+        # searches tokens (single + split-merge) for that value.
+        # Guards:
+        #   - equation must already be unbalanced (skip balanced equations)
+        #   - expected < 100 rejects trivially small speculative targets
+        #   - matched token must be on the correct page section for that field
         if not best_repair and optimization_mode and all_tokens is not None:
             missing_fields = [s for s in suspects if s not in repaired or repaired[s].value is None]
             if len(missing_fields) == 1:
                 m = missing_fields[0]
                 others = [s for s in suspects if s != m]
                 if all(s in repaired and repaired[s].value is not None for s in others):
-                    # If the equation already balances with the missing field as 0, do not mutate/search
+                    # Skip if equation already balances with missing field = 0
                     if m == target:
                         val_others = sum(repaired[s].value for s in summands if s != m)
                         is_balanced = abs(val_others) < _RESIDUAL_TOLERANCE
                     else:
                         val_others = sum(repaired[s].value for s in summands if s != m)
                         is_balanced = abs(repaired[target].value - val_others) < _RESIDUAL_TOLERANCE
+
                     if not is_balanced:
                         for suspect_a in others:
                             raw_a = repaired[suspect_a].raw_text
@@ -368,31 +434,48 @@ def apply_math_repairs(
                                     expected = repaired[target].value - sum(
                                         repaired[s].value for s in summands if s != m
                                     )
-                                if abs(expected) < _RESIDUAL_TOLERANCE:
+                                if abs(expected) < _RESIDUAL_TOLERANCE or abs(expected) < 100.0:
+                                    repaired[suspect_a].value = old_a
                                     continue
-                                if cv_a != old_a and abs(expected) < 100.0:
-                                    continue
-                                    
-                                # Search for expected value
+
+                                # Determine expected section for the missing field
+                                m_expected_section = _FIELD_SECTIONS.get(m)
+
                                 matched_token = None
                                 matched_val = None
+
+                                # Single-token scan
                                 for token in all_tokens:
+                                    # Section guard
+                                    if m_expected_section and page_section_map:
+                                        tok_section = page_section_map.get(token.page, "unknown")
+                                        if tok_section != "unknown" and tok_section != m_expected_section:
+                                            continue
                                     cv = parse_numeric(token.text)
                                     if cv is not None and abs(cv - expected) < 0.5:
                                         matched_token = token
                                         matched_val = cv
                                         break
-                                        
+
+                                # Split-token merge scan
                                 if not matched_token:
-                                    sorted_tokens = sorted(all_tokens, key=lambda t: (t.page, t.bbox[1], t.bbox[0]))
+                                    sorted_tokens = sorted(
+                                        all_tokens,
+                                        key=lambda t: (t.page, t.bbox[1], t.bbox[0]),
+                                    )
                                     for idx in range(len(sorted_tokens) - 1):
                                         ta = sorted_tokens[idx]
                                         tb = sorted_tokens[idx + 1]
                                         if ta.page != tb.page:
                                             continue
+                                        # Section guard on merged pair
+                                        if m_expected_section and page_section_map:
+                                            tok_section = page_section_map.get(ta.page, "unknown")
+                                            if tok_section != "unknown" and tok_section != m_expected_section:
+                                                continue
                                         y_overlap = abs(ta.bbox[1] - tb.bbox[1])
                                         x_gap = tb.bbox[0] - ta.bbox[2]
-                                        if y_overlap > 15 or x_gap < 0 or x_gap > 60:
+                                        if y_overlap > _Y_MERGE_THRESH or x_gap < 0 or x_gap > _X_MERGE_GAP_MAX:
                                             continue
                                         merged_text = ta.text + tb.text
                                         cv = parse_numeric(merged_text)
@@ -402,18 +485,19 @@ def apply_math_repairs(
                                                 text=merged_text,
                                                 bbox=(ta.bbox[0], ta.bbox[1], tb.bbox[2], tb.bbox[3]),
                                                 page=ta.page,
-                                                confidence=min(ta.confidence, tb.confidence)
+                                                confidence=min(ta.confidence, tb.confidence),
                                             )
                                             break
-                                            
+
+                                repaired[suspect_a].value = old_a
+
                                 if matched_token and matched_val is not None:
-                                    # Fill the missing field on the spot
                                     if m in repaired:
                                         repaired[m].value = matched_val
                                         repaired[m].raw_text = matched_token.text
                                         repaired[m].page = matched_token.page
                                         repaired[m].bbox = matched_token.bbox
-                                        repaired[m].reason = "inverse_search_merged" if len(matched_token.text) > len(ta.text) else "inverse_search"
+                                        repaired[m].reason = "inverse_search_merged" if " " not in matched_token.text else "inverse_search"
                                         repaired[m].confidence = CONFIDENCE_MEDIUM
                                         repaired[m].tokens = [matched_token]
                                     else:
@@ -421,14 +505,13 @@ def apply_math_repairs(
                                             m, matched_val, matched_token.text, matched_token,
                                             "inverse_search", CONFIDENCE_MEDIUM,
                                         )
-                                    logger.debug("  [INV-JOINT] filled missing field %s = %s", m, matched_val)
+                                    logger.debug("  [INV-JOINT] filled %s = %s", m, matched_val)
                                     best_repair = (suspect_a, cand_a, cv_a, "equation_anchored")
                                     break
-                            repaired[suspect_a].value = old_a
                             if best_repair:
                                 break
 
-        # Recompute after inverse search
+        # Recompute after inverse search / joint solver
         residual = compute_equation_residual(repaired, target, summands)
         if (residual is None or _residual_ok(residual)) and not best_repair:
             continue
@@ -473,7 +556,6 @@ def apply_math_repairs(
                         break
                 if best_repair:
                     break
-
 
         # Phase 2: sniper OCR
         if not best_repair:

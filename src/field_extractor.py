@@ -11,12 +11,12 @@ from .value_parser import parse_numeric
 def compute_match_score(query: str, desc: str) -> float:
     """
     Score how well `desc` matches `query`.
-    
+
     Design:
     - Full token overlap (query tokens ⊆ desc tokens): high score, no extra-word penalty.
     - Partial overlap: scaled score, small extra-word penalty.
     - No overlap: fall back to fuzzy ratio.
-    
+
     The key change from the old version: when query tokens are fully contained
     in desc tokens (containment match), we do NOT penalise the extra description
     words. This handles "Trade and other receivables" matching "Trade Receivables".
@@ -81,7 +81,7 @@ def compute_bbox(tokens: List[Token]) -> Optional[Tuple[int, int, int, int]]:
 def normalize_auditor_opinion(text: str) -> Optional[str]:
     """
     Classify an auditor's opinion block into one of the four standard labels.
-    
+
     Handles both:
     - Compact phrases: "qualified opinion", "adverse opinion"
     - Split mentions: "our opinion is unmodified" (no adjacent "opinion")
@@ -121,21 +121,18 @@ def normalize_auditor_opinion(text: str) -> Optional[str]:
 
 def _cross_field_collision_check(results: dict) -> dict:
     """
-    If the same value AND same page AND same bbox are assigned to two different
+    If the same value AND same page AND same raw_text are assigned to two different
     fields, the lower-scoring one is a collision and should be nulled out.
     This is general: in a real financial statement, the same table cell cannot
     be both Current Liabilities and Non-Current Liabilities.
     """
-    seen = {}  # (page, bbox) -> (field_name, score)
+    seen = {}  # (page, raw_text) -> field_name
     to_null = []
     for field_name, fv in results.items():
         if fv is None or fv.raw_text is None:
             continue
-        key = (fv.page, fv.raw_text)  # same page + same raw text = same cell
+        key = (fv.page, fv.raw_text)
         if key in seen:
-            # Keep the field whose name more closely matches "current" vs "non-current"
-            # Actually: just null the one that is semantically inconsistent.
-            # Non-Current should never share a value with Current at the same hierarchy.
             existing_field = seen[key]
             if "Non-Current" in field_name and "Non-Current" not in existing_field:
                 to_null.append(field_name)
@@ -147,34 +144,44 @@ def _cross_field_collision_check(results: dict) -> dict:
         del results[f]
     return results
 
-def detect_year_column(table_rows: List[TableRow]) -> Tuple[Dict[int, float], Dict[int, Dict[int, float]]]:
+
+def detect_year_column(
+    table_rows: List[TableRow],
+) -> Tuple[Dict[int, float], Dict[int, Dict[int, float]], Dict[int, float]]:
     """
+    Detect the most-recent-year column X position per page.
+
     Returns:
-      primary_map: {page: x_coord_of_most_recent_year}
-      full_year_map: {page: {year: x_coord}}
+      primary_map:    {page: x_coord_of_most_recent_year}
+      full_year_map:  {page: {year: x_coord}}
+      col_pitch_map:  {page: tightest_inter_column_gap_in_pixels}
+                      Used downstream as a DPI-aware cell-selection radius.
+                      Pages with only one detected year get pitch=None (caller
+                      falls back to 200*dpi_scale).
     """
     page_year_x: Dict[int, float] = {}
     full_year_map: Dict[int, Dict[int, float]] = {}
+    col_pitch_map: Dict[int, float] = {}
     last_seen_x = None
     last_seen_full = None
-    
+    last_seen_pitch = None
+
     pages = sorted(list(set(row.page for row in table_rows)))
-    
+
     for page in pages:
         page_rows = [r for r in table_rows if r.page == page]
-        
+
         # Aggregate year cells in the top 10 rows
         year_cells = []
         for row in page_rows[:10]:
             for cell_text, tokens in zip(row.cells, row.cell_tokens):
                 clean = cell_text.replace(",", "").replace(" ", "").strip()
                 if clean.isdigit() and 1990 <= int(clean) <= 2030 and tokens:
-                    # Calculate center X of the cell from its tokens
                     min_x = min(t.bbox[0] for t in tokens)
                     max_x = max(t.bbox[2] for t in tokens)
                     center_x = (min_x + max_x) / 2.0
                     year_cells.append((center_x, int(clean)))
-        
+
         unique_years = {y[1]: y[0] for y in year_cells}
         if len(unique_years) >= 2:
             target_x = unique_years[max(unique_years.keys())]
@@ -182,22 +189,30 @@ def detect_year_column(table_rows: List[TableRow]) -> Tuple[Dict[int, float], Di
             full_year_map[page] = dict(unique_years)
             last_seen_x = target_x
             last_seen_full = dict(unique_years)
-        
+
+            # Compute tightest gap between adjacent year column centres.
+            # This is the true column pitch for this page layout.
+            xs = sorted(unique_years.values())
+            gaps = [xs[i + 1] - xs[i] for i in range(len(xs) - 1)]
+            pitch = min(gaps) if gaps else None
+            col_pitch_map[page] = pitch
+            last_seen_pitch = pitch
+
         if page not in page_year_x and last_seen_x is not None:
-            # Forward-fill X coordinate for pages without headers
             page_year_x[page] = last_seen_x
             full_year_map[page] = last_seen_full
-            
-    # After the forward-fill loop, backward-fill pages that are still missing
+            col_pitch_map[page] = last_seen_pitch
+
+    # Backward-fill pages that are still missing
     for page in reversed(pages):
         if page not in page_year_x:
-            # find the nearest subsequent page that has an X
             for future_page in sorted([p for p in page_year_x if p > page]):
                 page_year_x[page] = page_year_x[future_page]
                 full_year_map[page] = full_year_map.get(future_page, {})
+                col_pitch_map[page] = col_pitch_map.get(future_page)
                 break
-            
-    return page_year_x, full_year_map
+
+    return page_year_x, full_year_map, col_pitch_map
 
 
 def extract_fields(
@@ -208,6 +223,7 @@ def extract_fields(
     full_year_map: Dict[int, Dict[int, float]] = None,
     page_section_map: Dict[int, str] = None,
     dpi_scale: float = 1.0,
+    col_pitch_map: Dict[int, float] = None,
 ) -> Dict[str, FieldValue]:
     results = {}
     flat_config = {}
@@ -227,6 +243,18 @@ def extract_fields(
 
     # Track the highest scoring row per field
     best_scores = {k: -1.0 for k in flat_config.keys()}
+
+    def _col_threshold(page: int) -> float:
+        """Return cell-selection distance threshold for this page.
+
+        Uses 55% of the detected inter-column pitch so we stay firmly within
+        the target year column and never bleed into adjacent year columns.
+        Falls back to 200*dpi_scale for single-year or un-detected layouts.
+        """
+        pitch = (col_pitch_map or {}).get(page)
+        if pitch and pitch > 0:
+            return 0.55 * pitch
+        return 200.0 * dpi_scale
 
     for row in table_rows:
         desc_lower = row.description.lower()
@@ -248,28 +276,32 @@ def extract_fields(
             if best_kw_score >= 82:
                 best_cell_idx = None
                 target_x = year_x_map.get(row.page) if year_x_map else None
-                
+
                 if target_x is not None:
-                    # Find the parseable cell whose tokens are closest to target_x
+                    # Find the parseable cell whose centre is closest to target_x
+                    # but within the dynamic column-pitch radius.
+                    threshold = _col_threshold(row.page)
                     closest_idx = None
-                    min_dist = float('inf')
+                    min_dist = float("inf")
                     for i, tokens in enumerate(row.cell_tokens):
-                        if not tokens: continue
-                        if parse_numeric(row.cells[i]) is None: continue
-                        
+                        if not tokens:
+                            continue
+                        if parse_numeric(row.cells[i]) is None:
+                            continue
                         min_cx = min(t.bbox[0] for t in tokens)
                         max_cx = max(t.bbox[2] for t in tokens)
                         center_x = (min_cx + max_cx) / 2.0
-                        
                         dist = abs(center_x - target_x)
                         if dist < min_dist:
                             min_dist = dist
                             closest_idx = i
-                            
-                    if closest_idx is not None and min_dist < (150.0 * dpi_scale):
+
+                    if closest_idx is not None and min_dist < threshold:
                         best_cell_idx = closest_idx
-                        
+
                 if best_cell_idx is None and target_x is None:
+                    # No year-column detected — pick the cell with the largest
+                    # absolute value (most likely the primary financial figure).
                     best_abs = -1.0
                     for idx in range(len(row.cells)):
                         v = parse_numeric(row.cells[idx])
@@ -281,11 +313,11 @@ def extract_fields(
 
                 raw_text = row.cells[best_cell_idx] if (row.cells and best_cell_idx is not None) else None
                 val = parse_numeric(raw_text)
-                
+
                 field_cfg = flat_config.get(field_name, {})
                 if field_cfg.get("sign") == "negative" and val is not None and val > 0:
                     val = -val
-                    if raw_text and not raw_text.startswith("-") and not "(" in raw_text:
+                    if raw_text and not raw_text.startswith("-") and "(" not in raw_text:
                         raw_text = "-" + raw_text
 
                 current_best_score = best_scores[field_name]
@@ -295,10 +327,14 @@ def extract_fields(
                     existing_val = None
                     if field_name in results and results[field_name] is not None:
                         existing_val = parse_numeric(results[field_name].raw_text)
-                    if (val is not None and abs(val) < 1e-6
-                            and existing_val is not None and abs(existing_val) > 1e-6):
+                    if (
+                        val is not None
+                        and abs(val) < 1e-6
+                        and existing_val is not None
+                        and abs(existing_val) > 1e-6
+                    ):
                         # New candidate is zero but existing is non-zero:
-                        # add as candidate only, do not replace primary value
+                        # add as candidate only, do not replace primary value.
                         if field_name in results and results[field_name] is not None:
                             results[field_name].row_candidates.append((raw_text, val))
                         should_update = False
@@ -317,7 +353,7 @@ def extract_fields(
                                     if abs(val) > abs(existing_val):
                                         should_update = True
                                 elif abs(val) > abs(existing_val) * 10:
-                                    # Overwrite tiny text mentions (like 2.14%) with large table values
+                                    # Overwrite tiny text mentions with large table values
                                     should_update = True
                             else:
                                 should_update = True
@@ -327,30 +363,27 @@ def extract_fields(
                             cval = parse_numeric(cell_text)
                             if cval is not None:
                                 field_cfg = flat_config.get(field_name, {})
-                                if field_cfg.get("sign") == "negative" and cval is not None and cval > 0:
+                                if field_cfg.get("sign") == "negative" and cval > 0:
                                     cval = -cval
-                                    if cell_text and not cell_text.startswith("-") and not "(" in cell_text:
+                                    if cell_text and not cell_text.startswith("-") and "(" not in cell_text:
                                         cell_text = "-" + cell_text
-                                results[field_name].row_candidates.append(
-                                    (cell_text, cval)
-                                )
+                                results[field_name].row_candidates.append((cell_text, cval))
 
                 if should_update:
                     best_scores[field_name] = best_kw_score
                     tokens_for_field = (
-                        row.cell_tokens[best_cell_idx] if (row.cell_tokens and best_cell_idx is not None) else []
+                        row.cell_tokens[best_cell_idx]
+                        if (row.cell_tokens and best_cell_idx is not None)
+                        else []
                     )
 
                     row_cands = []
                     if field_name in results and results[field_name] is not None:
-                        # Keep the old candidates
                         old_fv = results[field_name]
                         if old_fv.row_candidates:
                             row_cands.extend(old_fv.row_candidates)
-                        # Also keep the old primary value as a candidate if it exists
                         old_val = parse_numeric(old_fv.raw_text)
                         if old_val is not None:
-                            # Avoid duplicate if it's already in row_cands
                             if not any(c == old_val for _, c in row_cands):
                                 row_cands.append((old_fv.raw_text, old_val))
 
@@ -362,7 +395,7 @@ def extract_fields(
 
                     results[field_name] = FieldValue(
                         name=field_name,
-                        value=None,  # To be parsed later
+                        value=None,  # parsed by repair engine
                         raw_text=raw_text,
                         page=row.page,
                         tokens=tokens_for_field,
@@ -373,7 +406,9 @@ def extract_fields(
                         field_label=row.description,
                     )
 
-    # Extract Auditor's Opinion
+    # -----------------------------------------------------------------------
+    # Auditor's Opinion — handled via full text-block scan, not table rows
+    # -----------------------------------------------------------------------
     auditor_config = flat_config.get("Auditor's Opinion", {})
     auditor_kws = auditor_config.get("keywords", []) if isinstance(auditor_config, dict) else auditor_config
     found_opinion = False
@@ -385,9 +420,7 @@ def extract_fields(
             if kw.lower() in text_lower:
                 opinion_value = normalize_auditor_opinion(text_lower)
                 if opinion_value is None:
-                    # keyword present but opinion type not determinable from this block — skip
                     continue
-                
                 first_line = []
                 for tok in block.tokens:
                     if first_line and tok.bbox[0] - first_line[-1].bbox[2] > 100:
@@ -396,7 +429,6 @@ def extract_fields(
                         break
                     first_line.append(tok)
                 field_label_text = " ".join(t.text for t in first_line) if first_line else kw
-
                 results["Auditor's Opinion"] = FieldValue(
                     name="Auditor's Opinion",
                     value=opinion_value,
@@ -424,11 +456,10 @@ def extract_fields(
                         break
                     first_line.append(tok)
                 field_label_text = " ".join(t.text for t in first_line) if first_line else opinion_value
-
                 results["Auditor's Opinion"] = FieldValue(
                     name="Auditor's Opinion",
                     value=opinion_value,
-                    raw_text=text_lower[:80],   # first 80 chars as evidence
+                    raw_text=text_lower[:80],
                     page=block.page,
                     tokens=block.tokens,
                     bbox=compute_bbox(block.tokens),
@@ -441,6 +472,9 @@ def extract_fields(
 
     results = _cross_field_collision_check(results)
 
+    # -----------------------------------------------------------------------
+    # Multi-year extraction — populate FieldValue.multi_year per field
+    # -----------------------------------------------------------------------
     multi_year_results = {}
     for field_name, primary_fv in results.items():
         if primary_fv is None or primary_fv.page is None or field_name == "Auditor's Opinion":
@@ -448,7 +482,9 @@ def extract_fields(
         years_on_page = full_year_map.get(primary_fv.page, {}) if full_year_map else {}
         if len(years_on_page) < 2:
             primary_year = max(years_on_page.keys()) if years_on_page else None
-            multi_year_results[field_name] = {primary_year: primary_fv} if primary_year else {"primary": primary_fv}
+            multi_year_results[field_name] = (
+                {primary_year: primary_fv} if primary_year else {"primary": primary_fv}
+            )
             continue
 
         matched_row = None
@@ -464,16 +500,19 @@ def extract_fields(
 
         year_values = {}
         for yr, yr_x in sorted(years_on_page.items()):
+            threshold = _col_threshold(matched_row.page)
             best_cell_idx = None
             min_dist = float("inf")
             for i, tokens in enumerate(matched_row.cell_tokens):
-                if not tokens: continue
-                if parse_numeric(matched_row.cells[i]) is None: continue
+                if not tokens:
+                    continue
+                if parse_numeric(matched_row.cells[i]) is None:
+                    continue
                 min_cx = min(t.bbox[0] for t in tokens)
                 max_cx = max(t.bbox[2] for t in tokens)
                 center_x = (min_cx + max_cx) / 2.0
                 dist = abs(center_x - yr_x)
-                if dist < min_dist and dist < (150.0 * dpi_scale):
+                if dist < min_dist and dist < threshold:
                     min_dist = dist
                     best_cell_idx = i
 
@@ -485,7 +524,7 @@ def extract_fields(
             field_cfg = flat_config.get(field_name, {})
             if field_cfg.get("sign") == "negative" and val is not None and val > 0:
                 val = -val
-                if raw and not raw.startswith("-") and not "(" in raw:
+                if raw and not raw.startswith("-") and "(" not in raw:
                     raw = "-" + raw
 
             year_fv = FieldValue(
