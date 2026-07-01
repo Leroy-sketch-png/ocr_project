@@ -48,3 +48,17 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
             for yr, yfv in f.multi_year.items()
         }
     return base
+
+
+def export_fields(field_values: Dict[str, FieldValue]) -> Dict[str, Any]:
+    """
+    Convert the full {field_name: FieldValue} dict produced by the repair
+    and validation pipeline into a JSON-serialisable flat dict.
+
+    This is the function called by main.py. It was previously missing,
+    causing a NameError on every pipeline run.
+    """
+    result: Dict[str, Any] = {}
+    for field_name, fv in field_values.items():
+        result[field_name] = field_value_to_dict(fv)
+    return result
