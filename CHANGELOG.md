@@ -14,13 +14,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **`years` dict showed raw OCR values instead of repaired values:**
   Tesseract misread `11,095,953` as `14,095,953` for S2 PBT. The repair
   engine corrected the primary `value` via `PBT = NP + ITE`, but the
-  `years["2024"]` entry still held the garbage OCR value. The bbox_viz and
+  `years["2024"]` entry still held the raw OCR value. The bbox_viz and
   CSV exposed the stale data. Fix: post-repair propagation loop syncs the
   max-year entry with the primary field's value, tokens, bbox, and confidence.
 - **`_make_field_value()` dropped `multi_year` at 3 replacement sites:**
   Inverse search, inverse search merged, and inverted sign fix all replace
   FieldValues via `_make_field_value`, which has no `multi_year` parameter.
-  If a field had multi-year data from extraction, it was silently lost.
+  If a field had multi-year data from extraction, it was lost.
   Fix: after `apply_math_repairs`, restore `multi_year` from the pre-repair
   `fields` dict for any repaired field that lost it.
 - **`max(fv.multi_year.keys())` crash:** `multi_year` can contain `None`
@@ -111,7 +111,7 @@ correct extraction system.
 
 ---
 
-### Wave 3 — Critical structural bugs (pipeline was silently broken)
+### Wave 3 — Critical structural bugs (pipeline protections inactive)
 **Commit:** `bac591f`
 
 These bugs meant the pipeline appeared to work but several core protections
@@ -124,8 +124,8 @@ were completely inactive.
   two arguments. Python silently bound `table_rows` to `blocks` and ignored
   `text_blocks` entirely. TableRow objects don't have `.tokens` in the same
   shape as TextBlocks, so every page resolved to `section='unknown'`.
-  **Result: the entire section guard in Phase 1.6 and Phase 3 was a
-  silent no-op. All section-based false-positive protection was dead.**
+  **Result: the entire section guard in Phase 1.6 and Phase 3 was
+  inactive. All section-based false-positive protection was disabled.**
   Fix: signature now correctly accepts both `table_rows` AND `text_blocks`;
   uses `text_blocks` for section marker detection and `table_rows` for
   forward-filling sections across data pages.
@@ -164,9 +164,9 @@ were completely inactive.
   which requires ≥15 chars of content, ≥2 spaces before the number, and a
   1–3 digit page number (1–999). Financial values in thousands-scale reports
   are always ≥1,000; TOC page numbers are always ≤999. The gap is clean.
-- **BUG 3 — dead `_apply_opl_anchor()` function with lying docstring**
-  (`repair_engine.py`): The hand removed the call during local debugging
-  but left the 30-line function body in place. The `apply_math_repairs()`
+- **BUG 3 — removed `_apply_opl_anchor()` function with stale docstring**
+  (`repair_engine.py`): The call was removed during local debugging
+  but the 30-line function body remained. The `apply_math_repairs()`
   docstring still listed `0C — OPL anchor from PBT` as an active pre-phase.
   **Fix:** function body deleted, docstring corrected to list only `0A` and
   `0B` (the two pre-phases that actually run).
