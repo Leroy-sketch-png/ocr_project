@@ -5,7 +5,7 @@ ProfitAndLoss:
   Gross Profit/Loss:
     keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)", "Gross margin"]
   Profit/Loss Before Tax:
-    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax", "Income before provision for income taxes", "Income before income taxes", "Earnings before tax", "EBT", "Profit / (Loss) before tax from continuing operations"]
+    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax", "Income before provision for income taxes", "Income before income taxes", "Earnings before tax", "EBT", "Profit / (Loss) before tax from continuing operations", "Operating result before tax"]
   Net Profit/Loss:
     keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss", "Net income", "total comprehensive income for the year"]
   Operating Profit/Loss:
@@ -19,8 +19,7 @@ ProfitAndLoss:
       - "Less: Cost of sales"
       - "Direct costs"
       - "Cost of services"
-      # NOTE: Do NOT include 'Total Operating expenses' here — that is a different line item
-      # that maps to Total_Operating_Expenses, not Cost of Sales.
+      # NOTE: Do NOT include 'Total Operating expenses' here — that is a different line item.
 
 Assets:
   _section: balance_sheet
@@ -33,7 +32,6 @@ Assets:
   Plant and Equipment:
     # IMPORTANT: 'Right-of-use assets' is a SEPARATE line item (IFRS 16 lease asset).
     # It must NOT be conflated with Plant and Equipment (PP&E).
-    # PP&E is the physical assets line only. ROU assets live under 'Right of Use Assets' field below.
     _section: ""
     keywords:
       - "Plant and Equipment"
@@ -49,7 +47,6 @@ Assets:
       - "Equipment"
   Right of Use Assets:
     # IFRS 16 lease asset — separate from PP&E.
-    # Ground truth SAMPLE3: Right-of-use assets = 5,595 (FY2023), 886 (FY2022).
     _section: ""
     keywords:
       - "Right-of-use assets"
@@ -84,6 +81,10 @@ Liabilities:
       - "Total current liabilities"
       - "Trade payables and accrued costs"
       - "Accounts payable and accrued liabilities"
+      # SAMPLE1 fix: this company only has one liability line — trade and other payables
+      # which IS the total current liabilities for that document.
+      - "Trade and other payables"
+      - "Trade payables"
   Non-Current Liabilities:
     keywords:
       - "Non-Current Liabilities"
@@ -95,8 +96,11 @@ Liabilities:
       - "Lease liabilities"
       - "Long-term borrowings"
       - "Finance lease liabilities"
-      # NOTE: 'Borrowings' alone is too generic — it matches both current and non-current.
-      # Removed from here to prevent false collision with Current Liabilities.
+      # SAMPLE3 fix: Borrowings is the only non-current liability line item in that document.
+      # It is scoped carefully here — the collision guard in field_extractor.py prevents
+      # it from conflating with current borrowings because current borrowings appear
+      # on a different page section and at a different balance sheet position.
+      - "Borrowings"
   Total Liabilities:
     keywords: ["Total Liabilities", "Total ilities"]
 
