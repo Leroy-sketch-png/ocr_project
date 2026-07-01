@@ -5,7 +5,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — V3 branch · 2026-07-01
+## [Unreleased] — Post-V3 stabilization · 2026-07-01
+
+### Multi-year repair propagation (AoE cluster — 5 bugs)
+**Commit:** `09856e8`
+
+#### Fixed
+- **`years` dict showed raw OCR values instead of repaired values:**
+  Tesseract misread `11,095,953` as `14,095,953` for S2 PBT. The repair
+  engine corrected the primary `value` via `PBT = NP + ITE`, but the
+  `years["2024"]` entry still held the garbage OCR value. The bbox_viz and
+  CSV exposed the stale data. Fix: post-repair propagation loop syncs the
+  max-year entry with the primary field's value, tokens, bbox, and confidence.
+- **`_make_field_value()` dropped `multi_year` at 3 replacement sites:**
+  Inverse search, inverse search merged, and inverted sign fix all replace
+  FieldValues via `_make_field_value`, which has no `multi_year` parameter.
+  If a field had multi-year data from extraction, it was silently lost.
+  Fix: after `apply_math_repairs`, restore `multi_year` from the pre-repair
+  `fields` dict for any repaired field that lost it.
+- **`max(fv.multi_year.keys())` crash:** `multi_year` can contain `None`
+  or string keys (edge cases in single-year extraction). `max()` on mixed
+  types raises `TypeError`. Fix: filter to `int` keys only.
+- **Year entry confidence always `"high"`:** Year-level FieldValues were
+  created with default `CONFIDENCE_HIGH` even when the primary field was
+  repaired (should show `medium`/`inferred`). Fix: sync `fv.confidence`
+  into the matching year entry.
+- **All 18 post-extraction `.value =` mutation sites left `years` stale:**
+  Every direct value assignment in the repair engine modified the primary
+  field without touching its `multi_year`. Single propagation loop now
+  catches all.
+
+---
+
+## [V3] — V3 branch · 2026-07-01
 
 This branch represents a full-day engineering sprint building the OCR
 pipeline from scaffolding to a reference-suite-validated, defensively
