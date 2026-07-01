@@ -95,6 +95,18 @@ def process_file(
         flat_config=flat_config,
     )
 
+    # Propagate repaired primary values into multi_year entries so the
+    # years dict reflects corrections (e.g., PBT = NP + ITE repairs).
+    for fv in repaired.values():
+        if fv is not None and fv.multi_year and fv.page is not None:
+            max_yr = max(fv.multi_year.keys())
+            my_fv = fv.multi_year[max_yr]
+            if my_fv is not None and my_fv.value != fv.value:
+                my_fv.value = fv.value
+                my_fv.raw_text = fv.raw_text
+                my_fv.tokens = fv.tokens
+                my_fv.bbox = fv.bbox
+
     validated = validate_fields(repaired)
 
     return export_fields(validated)
