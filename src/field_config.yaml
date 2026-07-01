@@ -5,20 +5,60 @@ ProfitAndLoss:
   Gross Profit/Loss:
     keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)", "Gross margin"]
   Profit/Loss Before Tax:
-    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax", "Income before provision for income taxes", "Income before income taxes", "Earnings before tax", "EBT", "Profit / (Loss) before tax from continuing operations", "Operating result before tax"]
+    keywords:
+      - "Profit Before Tax"
+      - "Loss Before Tax"
+      - "Loss before income tax"
+      - "Profit before income tax"
+      - "Income before tax"
+      - "PBT"
+      - "Result before tax"
+      - "Profit/(loss) before tax"
+      - "Income before provision for income taxes"
+      - "Income before income taxes"
+      - "Earnings before tax"
+      - "EBT"
+      - "Profit / (Loss) before tax from continuing operations"
+      - "Profit Loss before tax from continuing operations"
+      - "Operating result before tax"
   Net Profit/Loss:
-    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss", "Net income", "total comprehensive income for the year"]
+    keywords:
+      - "Net Profit"
+      - "Net Loss"
+      - "Profit for the Year"
+      - "Net Profit/Loss"
+      - "Annual result"
+      - "Annual on result"
+      - "Net profit / (loss)"
+      - "Net profit (loss)"
+      - "Profit / (loss) for the year"
+      - "Total comprehensive income"
+      - "Total comprehensive profit"
+      - "Total comprehensive loss"
+      - "Net income"
+      - "total comprehensive income for the year"
   Operating Profit/Loss:
-    keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)", "Operating income", "Income from operations"]
+    keywords:
+      - "Operating Profit"
+      - "Operating Loss"
+      - "Operating Profit/Loss"
+      - "Result of operations"
+      - "Operating profit / (loss)"
+      - "Operating income"
+      - "Income from operations"
   Cost of Sales:
     sign: negative
     keywords:
       - "Cost of Sales"
       - "Cost of Goods Sold"
+      - "Cost of goods sold and services rendered"
       - "Cost of revenue"
       - "Less: Cost of sales"
+      - "Less Cost of sales"
       - "Direct costs"
       - "Cost of services"
+      - "Purchase of services"
+      - "Purchase of goods"
       # NOTE: Do NOT include 'Total Operating expenses' here — that is a different line item.
 
 Assets:
