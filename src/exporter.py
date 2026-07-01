@@ -43,8 +43,11 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
                 "value": yfv.value,
                 "raw_text": yfv.raw_text,
                 "confidence": getattr(yfv, "confidence", "high"),
+                "evidence": " ".join(t.text for t in sorted(yfv.tokens, key=lambda tk: (tk.page, tk.bbox[1], tk.bbox[0]))) if yfv.tokens else (yfv.raw_text or ""),
                 "page": yfv.page,
                 "bbox": list(yfv.bbox) if yfv.bbox else None,
+                "valid": yfv.valid,
+                "reason": yfv.reason,
             }
             for yr, yfv in f.multi_year.items()
         }
