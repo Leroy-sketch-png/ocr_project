@@ -22,7 +22,9 @@ SECTION_MARKERS = {
         "movements in equity",
     ],
     "notes": [
-        "notes to the financial",
+        "notes to the financial", "notes to the consolidated",
+        "notes to financial statements", "notes to the financial statements",
+        "notes",
     ],
 }
 
@@ -55,8 +57,14 @@ def detect_page_sections(
         line_text = " ".join(t.text for t in block.tokens)
 
         # Auditor-report trap: prose sentences mention all section names in
-        # one long sentence. Real section headers are short (< 80 chars).
-        if len(line_text) > 80:
+        # one long sentence. Real section headers are short (< 50 chars).
+        if len(line_text) > 50:
+            if block.page not in page_section:
+                page_section[block.page] = current_section
+            continue
+
+        # Table of Contents (TOC) trap: TOC lines contain section name followed by page number
+        if re.search(r'\s+\d+$', line_text.strip()):
             if block.page not in page_section:
                 page_section[block.page] = current_section
             continue
@@ -65,12 +73,16 @@ def detect_page_sections(
         matched = False
         for stype, markers in SECTION_MARKERS.items():
             if any(m in line_lower for m in markers):
+                if stype == "notes" and block.page < 2:
+                    continue
+                if current_section == "notes" and stype != "notes":
+                    continue
                 current_section = stype
                 matched = True
                 break
 
         # Strict single-word / short-phrase headers
-        if not matched:
+        if not matched and current_section != "notes":
             stripped = line_lower.strip()
             if stripped in (
                 "balance",

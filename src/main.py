@@ -109,9 +109,9 @@ def main():
     args = parser.parse_args()
 
     if args.debug:
-        logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+        logging.basicConfig(level=logging.DEBUG, stream=sys.stderr, force=True)
     else:
-        logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
+        logging.basicConfig(level=logging.WARNING, stream=sys.stderr, force=True)
 
     result = process_file(args.pdf, args.config, optimization_mode=args.optimize)
 

@@ -38,9 +38,6 @@ EQUATIONS = [
     ("Total Equity",             ["Paid Up Capital", "Retained Earnings"]),
     ("Total Assets",             ["Total Liabilities", "Total Equity"]),
     ("Profit/Loss Before Tax",   ["Net Profit/Loss", "Income Tax Expense"]),
-    # OPL anchor: if OPL is missing but PBT is present, treat PBT as a proxy
-    # summand so inverse-search will scan the token stream for OPL.
-    ("Profit/Loss Before Tax",   ["Operating Profit/Loss"]),
 ]
 
 # ---------------------------------------------------------------------------
@@ -229,7 +226,7 @@ def _apply_zero_ncl_inference(
         for row in table_rows:
             desc_lower = row.description.lower()
             for kw in ncl_kws:
-                if compute_match_score(kw, desc_lower) >= 60:
+                if compute_match_score(kw, desc_lower) >= 80:
                     logger.debug(
                         "[ZERO-NCL] Suppressed — structural NCL candidate: '%s'",
                         row.description,
@@ -250,38 +247,7 @@ def _apply_zero_ncl_inference(
     )
 
 
-def _apply_opl_anchor(fields: Dict[str, FieldValue]) -> None:
-    """Set Operating Profit/Loss = PBT as a conservative lower-bound anchor.
 
-    Fires ONLY when OPL is missing and both GP and PBT are present.
-    Marks the result CONFIDENCE_INFERRED so downstream consumers and the
-    evaluator know this is derived, not extracted. The repair phases
-    (inverse search) will subsequently try to find a better value from
-    the token stream and will overwrite this anchor if they succeed.
-    """
-    opl = fields.get("Operating Profit/Loss")
-    pbt = fields.get("Profit/Loss Before Tax")
-    gp = fields.get("Gross Profit/Loss")
-    if (
-        (opl is None or opl.value is None)
-        and pbt is not None and pbt.value is not None
-        and gp is not None and gp.value is not None
-    ):
-        logger.debug(
-            "[OPL-ANCHOR] OPL missing — anchoring to PBT=%s (will be refined)",
-            pbt.value,
-        )
-        fields["Operating Profit/Loss"] = FieldValue(
-            name="Operating Profit/Loss",
-            value=pbt.value,
-            raw_text=pbt.raw_text,
-            page=pbt.page,
-            tokens=pbt.tokens,
-            bbox=pbt.bbox,
-            valid=True,
-            reason="opl_pbt_anchor",
-            confidence=CONFIDENCE_INFERRED,
-        )
 
 
 def _check_liabilities_closure(
@@ -364,7 +330,6 @@ def apply_math_repairs(
     # --- Pre-phases ---
     _apply_null_cos_without_gp(repaired)
     _apply_zero_ncl_inference(repaired, table_rows=table_rows, flat_config=flat_config)
-    _apply_opl_anchor(repaired)
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands
@@ -407,7 +372,7 @@ def apply_math_repairs(
                         for token in all_tokens:
                             if m_expected_section and page_section_map:
                                 tok_section = page_section_map.get(token.page, "unknown")
-                                if tok_section != "unknown" and tok_section != m_expected_section:
+                                if tok_section != "unknown" and tok_section != "notes" and tok_section != m_expected_section:
                                     continue
                             cv = parse_numeric(token.text)
                             if cv is not None and abs(cv - expected) < 0.5:
@@ -450,7 +415,7 @@ def apply_math_repairs(
                                         continue
                                     if m_expected_section and page_section_map:
                                         tok_section = page_section_map.get(ta.page, "unknown")
-                                        if tok_section != "unknown" and tok_section != m_expected_section:
+                                        if tok_section != "unknown" and tok_section != "notes" and tok_section != m_expected_section:
                                             continue
                                     y_overlap = abs(ta.bbox[1] - tb.bbox[1])
                                     x_gap = tb.bbox[0] - ta.bbox[2]
@@ -541,7 +506,7 @@ def apply_math_repairs(
                                 for token in all_tokens:
                                     if m_expected_section and page_section_map:
                                         tok_section = page_section_map.get(token.page, "unknown")
-                                        if tok_section != "unknown" and tok_section != m_expected_section:
+                                        if tok_section != "unknown" and tok_section != "notes" and tok_section != m_expected_section:
                                             continue
                                     cv = parse_numeric(token.text)
                                     if cv is not None and abs(cv - expected) < 0.5:
@@ -561,7 +526,7 @@ def apply_math_repairs(
                                             continue
                                         if m_expected_section and page_section_map:
                                             tok_section = page_section_map.get(ta.page, "unknown")
-                                            if tok_section != "unknown" and tok_section != m_expected_section:
+                                            if tok_section != "unknown" and tok_section != "notes" and tok_section != m_expected_section:
                                                 continue
                                         y_overlap = abs(ta.bbox[1] - tb.bbox[1])
                                         x_gap = tb.bbox[0] - ta.bbox[2]
