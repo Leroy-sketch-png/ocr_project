@@ -88,7 +88,7 @@ def evaluate() -> None:
             total_correct += score // 100
             total_fields += 1
 
-            status = "✅" if score == 100 else "❌"
+            status = "OK" if score == 100 else "FAIL"
             tag = ""
             if score == 0:
                 if expected_val is None and extracted_val is not None:
