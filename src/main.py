@@ -38,10 +38,10 @@ def process_file(
     # Cache preprocessed page images once per page to avoid double-processing
     for page_idx, (page_num, page_image, page_dpi_scale) in enumerate(doc.pages):
         processed = preprocess_image(page_image)
-        processed_images[page_idx] = processed
-        tokens = engine.recognize_page(processed, page_idx)
+        processed_images[page_num] = processed
+        tokens = engine.recognize_page(processed, page_num)
         all_tokens.extend(tokens)
-        if page_idx == 0:
+        if page_num == 1:
             dpi_scale = page_dpi_scale
 
     text_blocks = build_text_blocks(all_tokens)

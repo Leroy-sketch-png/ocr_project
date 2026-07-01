@@ -237,13 +237,39 @@ def _apply_zero_ncl_inference(
                     return
 
     logger.debug("[ZERO-NCL] Inferring CL = TL = %s", tl.value)
+    # Try to locate the actual CL row for correct bbox/evidence
+    raw_text = tl.raw_text
+    page = tl.page
+    tokens = tl.tokens
+    bbox = tl.bbox
+    if table_rows is not None:
+        for row in table_rows:
+            desc = row.description.strip().lower()
+            if desc in ("total liabilities", "total ilities"):
+                for ci, ct in enumerate(row.cells):
+                    try:
+                        cv = float(ct.replace(",", ""))
+                        if abs(cv - tl.value) < 0.5:
+                            raw_text = ct
+                            page = row.page
+                            if ci < len(row.cell_tokens) and row.cell_tokens[ci]:
+                                toks = row.cell_tokens[ci]
+                                xs = [t.bbox[0] for t in toks]
+                                ys = [t.bbox[1] for t in toks]
+                                xe = [t.bbox[2] for t in toks]
+                                ye = [t.bbox[3] for t in toks]
+                                bbox = (min(xs), min(ys), max(xe), max(ye))
+                            break
+                    except (ValueError, AttributeError):
+                        continue
+                break
     fields["Current Liabilities"] = FieldValue(
         name="Current Liabilities",
         value=tl.value,
-        raw_text=tl.raw_text,
-        page=tl.page,
-        tokens=tl.tokens,
-        bbox=tl.bbox,
+        raw_text=raw_text,
+        page=page,
+        tokens=tokens,
+        bbox=bbox,
         valid=True,
         reason="zero_ncl_inference",
         confidence=CONFIDENCE_INFERRED,
@@ -274,19 +300,26 @@ def _apply_cl_inference(
     if inferred_cl < 0:
         return
 
-    # Try to find the row matching this value for evidence
-    raw_text = str(inferred_cl)
+    # Find the row matching this inferred value to get correct bbox/evidence
+    raw_text = str(int(inferred_cl))
     page = tl.page
     tokens = tl.tokens
     bbox = tl.bbox
     if table_rows is not None:
         for row in table_rows:
-            for cell_text in row.cells:
+            for ci, cell_text in enumerate(row.cells):
                 try:
                     cv = float(cell_text.replace(",", "").replace("(", "").replace(")", "").replace(" ", ""))
                     if abs(cv - inferred_cl) < 0.5:
                         raw_text = cell_text
                         page = row.page
+                        if ci < len(row.cell_tokens) and row.cell_tokens[ci]:
+                            tokens = row.cell_tokens[ci]
+                            xs = [t.bbox[0] for t in tokens]
+                            ys = [t.bbox[1] for t in tokens]
+                            xe = [t.bbox[2] for t in tokens]
+                            ye = [t.bbox[3] for t in tokens]
+                            bbox = (min(xs), min(ys), max(xe), max(ye))
                         break
                 except (ValueError, AttributeError):
                     continue
