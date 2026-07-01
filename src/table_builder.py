@@ -22,11 +22,23 @@ SECTION_MARKERS = {
         "movements in equity",
     ],
     "notes": [
-        "notes to the financial", "notes to the consolidated",
-        "notes to financial statements", "notes to the financial statements",
-        "notes",
+        # IMPORTANT: Do NOT add bare single words like 'notes' here.
+        # Any token containing 'notes' (footnote refs, 'notes payable',
+        # 'see notes 3', etc.) would permanently freeze the section classifier
+        # into the notes state for the rest of the document.
+        # Only use specific multi-word phrases that are unambiguous headers.
+        "notes to the financial",
+        "notes to the consolidated",
+        "notes to financial statements",
+        "notes to the financial statements",
     ],
 }
+
+# A TOC line looks like:  SECTION NAME   <2+ spaces>  <page number 1-999>
+# Financial values are always >= 1000 in real reports (expressed in thousands).
+# Page numbers in TOCs are always short (1-3 digits, 1-999).
+# Also require minimum line length of 15 to exclude very short stub lines.
+_TOC_LINE_RE = re.compile(r'^.{15,}\s{2,}(\d{1,3})\s*$')
 
 
 def detect_page_sections(
@@ -38,16 +50,22 @@ def detect_page_sections(
 
     Uses text_blocks (full line text including headings) for marker detection.
     Uses table_rows only to ensure every page that has financial data gets
-    a section assignment (forward-fills from the last seen section header).
+    a section assignment via forward-fill from the last seen section header.
 
-    Previous bug: called with (table_rows, text_blocks) but signature only
-    accepted one argument — table_rows was silently bound to 'blocks' and
-    text_blocks was ignored entirely. Every page resolved to section='unknown'.
+    Section locking rules:
+    - Once 'notes' section is entered it cannot be exited (notes are always
+      at the end of a financial report).
+    - 'notes' markers are only matched on pages >= 2 (prevents cover page
+      or TOC mentions of 'notes' from triggering a premature lock).
+    - Lines longer than 50 chars are assumed to be prose/auditor sentences,
+      not section headers, and are skipped for marker matching.
+    - Lines matching the TOC pattern (text + 2+ spaces + 1-3 digit page
+      number) are skipped to prevent table-of-contents pages from triggering
+      false section transitions.
     """
     page_section: Dict[int, str] = {}
     current_section = "unknown"
 
-    # Sort text_blocks by page then vertical position
     sorted_blocks = sorted(
         text_blocks,
         key=lambda b: (b.page, b.tokens[0].bbox[1] if b.tokens else 0),
@@ -56,15 +74,14 @@ def detect_page_sections(
     for block in sorted_blocks:
         line_text = " ".join(t.text for t in block.tokens)
 
-        # Auditor-report trap: prose sentences mention all section names in
-        # one long sentence. Real section headers are short (< 50 chars).
+        # Skip prose sentences (auditor reports, director commentary, etc.)
         if len(line_text) > 50:
             if block.page not in page_section:
                 page_section[block.page] = current_section
             continue
 
-        # Table of Contents (TOC) trap: TOC lines contain section name followed by page number
-        if re.search(r'\s+\d+$', line_text.strip()):
+        # Skip Table of Contents entries
+        if _TOC_LINE_RE.match(line_text.strip()):
             if block.page not in page_section:
                 page_section[block.page] = current_section
             continue
@@ -73,15 +90,18 @@ def detect_page_sections(
         matched = False
         for stype, markers in SECTION_MARKERS.items():
             if any(m in line_lower for m in markers):
+                # Guard 1: notes section only valid from page 2 onward
                 if stype == "notes" and block.page < 2:
                     continue
+                # Guard 2: once in notes, never leave — notes are always terminal
                 if current_section == "notes" and stype != "notes":
                     continue
                 current_section = stype
                 matched = True
                 break
 
-        # Strict single-word / short-phrase headers
+        # Strict single-word / short-phrase balance sheet headers
+        # Only applied when NOT already in notes (same lock logic)
         if not matched and current_section != "notes":
             stripped = line_lower.strip()
             if stripped in (
@@ -96,17 +116,15 @@ def detect_page_sections(
         if block.page not in page_section:
             page_section[block.page] = current_section
         elif matched:
-            # A new section header mid-page overrides the earlier assignment
             page_section[block.page] = current_section
 
-    # Forward-fill: ensure every page that has table rows gets a section.
-    # Pages beyond the last header page inherit the last known section.
+    # Forward-fill: every page that has table rows but no detected header
+    # inherits the section from the nearest preceding page that has one.
     all_pages = sorted(
         set(r.page for r in table_rows) | set(page_section.keys())
     )
     for page in all_pages:
         if page not in page_section:
-            # Find nearest preceding page with a known section
             for prev in reversed([p for p in all_pages if p < page]):
                 if prev in page_section:
                     page_section[page] = page_section[prev]
@@ -123,14 +141,12 @@ def build_text_blocks(tokens: List[Token], y_threshold: int = 12) -> List[TextBl
         return []
 
     tokens_sorted = sorted(tokens, key=lambda t: (t.page, t.bbox[1]))
-
     blocks = []
     current_line: List[Token] = [tokens_sorted[0]]
 
     for i in range(1, len(tokens_sorted)):
         t = tokens_sorted[i]
         prev_t = current_line[-1]
-
         if t.page == prev_t.page and abs(t.bbox[1] - prev_t.bbox[1]) <= y_threshold:
             current_line.append(t)
         else:
@@ -154,9 +170,8 @@ def is_numeric_token(text: str) -> bool:
 
 def _is_note_reference_row(description: str, cells: List[str]) -> bool:
     """
-    Returns True if this row looks like a footnote/note reference row
-    rather than a financial data row.
-    Signal: single cell, value <= 30, no financial magnitude word in description.
+    Returns True if this row looks like a footnote reference row, not data.
+    Signal: exactly one cell, value <= 30, no financial keyword in description.
     """
     if len(cells) != 1:
         return False
@@ -182,14 +197,12 @@ def detect_column_boundaries(
 ) -> List[float]:
     """
     Cluster numeric token groups by right-edge X to find table columns.
-    Financial tables are typically right-aligned.
-    Returns sorted list of column right-edges.
+    Financial tables are right-aligned. Returns sorted list of column right-edges.
     """
     if not all_groups_on_page:
         return []
     x_edges = [g[-1].bbox[2] for g in all_groups_on_page]
     x_edges.sort()
-
     clusters = []
     current_cluster = [x_edges[0]]
     for x in x_edges[1:]:
@@ -258,7 +271,6 @@ def build_table_rows(text_blocks: List[TextBlock], dpi_scale: float = 1.0) -> Li
                 continue
 
             description = " ".join(t.text for t in desc_tokens).strip()
-
             cells = [""] * len(col_centers)
             cell_tokens: List[List[Token]] = [[] for _ in range(len(col_centers))]
 

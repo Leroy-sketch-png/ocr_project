@@ -1,7 +1,7 @@
 import copy
 import itertools
 import logging
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from .cell_ocr import targeted_ocr
 from .models import (
@@ -21,15 +21,8 @@ _RESIDUAL_TOLERANCE = 1e-2
 # ---------------------------------------------------------------------------
 # Accounting equations
 # ---------------------------------------------------------------------------
-# All summands are additive; signed fields (Cost of Sales, negative Retained
-# Earnings) carry their sign in the extracted value, so arithmetic is uniform.
-#
-# New in wave-2:
-#   Row 7 anchors Operating Profit/Loss via PBT when the document has both.
-#   Equation direction: PBT = OPL  (non-operating items assumed zero or
-#   already captured elsewhere). This is intentionally conservative — it only
-#   fires when PBT is the sole other present field, giving OPL a lower-bound
-#   anchor that the inverse-search phases can then refine from the token stream.
+# All summands are additive. Signed fields (e.g. Cost of Sales, which is
+# negative) carry their sign in the extracted value so arithmetic is uniform.
 EQUATIONS = [
     ("Gross Profit/Loss",        ["Revenue", "Cost of Sales"]),
     ("Current Assets",           ["Cash and Cash Equivalents", "Trade Receivables"]),
@@ -42,7 +35,9 @@ EQUATIONS = [
 
 # ---------------------------------------------------------------------------
 # Field -> document section mapping
-# Used by Phase 1.6 to reject tokens found in the wrong section.
+# Used by Phase 1.6 and Phase 3 to reject tokens found in the wrong section.
+# Exception: tokens on 'notes' pages are always allowed through as a fallback
+# because some fields (e.g. Income Tax Expense) are only disclosed in notes.
 # ---------------------------------------------------------------------------
 _FIELD_SECTIONS: Dict[str, str] = {
     "Revenue":                   "income_statement",
@@ -79,14 +74,11 @@ CONFUSION_SET: Dict[str, List[str]] = {
     "9": ["0", "8"],
 }
 
-# Maximum fraction a digit-mutation repair can change a value by.
-# Bypassed for equation_anchored / sign_flip / column_selection repairs
-# because those are mathematically or structurally proven.
+# Maximum fractional change allowed for a heuristic (non-equation-anchored) repair.
 _MAX_REPAIR_DELTA_RATIO = 0.15
 
-# Maximum number of times a single field may be mutated across all equations.
-# A field repaired more than this many times is almost certainly being
-# over-corrected by conflicting equations — reject subsequent repairs.
+# A field may only be mutated once across all equations in a single repair run.
+# Prevents equation cross-contamination (fixing field A for eq-1 breaking eq-2).
 _MAX_REPAIRS_PER_FIELD = 1
 
 
@@ -97,7 +89,7 @@ _MAX_REPAIRS_PER_FIELD = 1
 def compute_equation_residual(
     fields: Dict[str, FieldValue], target: str, summands: List[str]
 ) -> Optional[float]:
-    """Return |target - sum(summands)|, or None if any field is missing."""
+    """Return |target - sum(summands)|, or None if any participant is missing."""
     if target not in fields or fields[target].value is None:
         return None
     total = 0.0
@@ -122,16 +114,14 @@ def _is_safe_repair(
     """Return True if the proposed repair passes all safety guards.
 
     Guards (in order):
-    1. Repair-chain cap: reject if this field has already been mutated
-       _MAX_REPAIRS_PER_FIELD times.
+    1. Chain cap: reject if this field has already been mutated once this run.
     2. Structural repairs (sign_flip, column_selection, equation_anchored)
-       bypass the magnitude ratio guard — they are provably correct.
-    3. Heuristic repairs: reject if the proposed change exceeds
-       _MAX_REPAIR_DELTA_RATIO of the current value.
+       bypass the magnitude ratio guard — they are mathematically proven.
+    3. Heuristic repairs: reject if change exceeds _MAX_REPAIR_DELTA_RATIO.
     """
     if repair_counts.get(field, 0) >= _MAX_REPAIRS_PER_FIELD:
         logger.debug(
-            "[REPAIR-CAP] %s already repaired %d time(s) — rejecting further mutation",
+            "[REPAIR-CAP] %s already repaired %d time(s) — rejecting",
             field, repair_counts[field],
         )
         return False
@@ -189,7 +179,12 @@ def _make_field_value(
 # ---------------------------------------------------------------------------
 
 def _apply_null_cos_without_gp(fields: Dict[str, FieldValue]) -> None:
-    """Null Cost of Sales when no Gross Profit line exists."""
+    """Null Cost of Sales when no Gross Profit line exists.
+
+    CoS is only meaningful when a gross profit concept exists. If GP is absent
+    the CoS match is almost certainly a false positive from an operating-expense
+    row in a services-only P&L. Nulling it prevents downstream equation corruption.
+    """
     gp = fields.get("Gross Profit/Loss")
     cos = fields.get("Cost of Sales")
     if (gp is None or gp.value is None) and (cos is not None and cos.value is not None):
@@ -206,8 +201,13 @@ def _apply_zero_ncl_inference(
 ) -> None:
     """Infer Current Liabilities = Total Liabilities when NCL is truly absent.
 
-    Structural guard: suppressed if any balance-sheet row scores >= 60
-    against any NCL keyword — i.e., NCL exists but was merely unmatched.
+    Handles documents where there are no non-current liabilities at all —
+    the single liabilities line IS the total.
+
+    Structural guard: suppressed if any balance-sheet row scores >= 80
+    against any NCL keyword. Score >= 80 means NCL exists structurally but
+    was merely unmatched at the normal extraction threshold. In that case
+    inferring CL = TL would silently corrupt the balance sheet.
     """
     tl = fields.get("Total Liabilities")
     ncl = fields.get("Non-Current Liabilities")
@@ -228,7 +228,7 @@ def _apply_zero_ncl_inference(
             for kw in ncl_kws:
                 if compute_match_score(kw, desc_lower) >= 80:
                     logger.debug(
-                        "[ZERO-NCL] Suppressed — structural NCL candidate: '%s'",
+                        "[ZERO-NCL] Suppressed — structural NCL candidate (score>=80): '%s'",
                         row.description,
                     )
                     return
@@ -247,18 +247,12 @@ def _apply_zero_ncl_inference(
     )
 
 
+def _check_liabilities_closure(fields: Dict[str, FieldValue]) -> None:
+    """Post-repair sanity check: TL must equal CL + NCL.
 
-
-
-def _check_liabilities_closure(
-    fields: Dict[str, FieldValue],
-) -> None:
-    """Post-repair sanity check: TL should equal CL + NCL.
-
-    If zero_ncl_inference fired but the balance sheet still doesn't close
-    (e.g. TL was itself misread), downgrade TL confidence and emit WARNING.
-    This is a diagnostic signal, not a repair — it tells downstream
-    consumers the balance sheet is suspect.
+    If they don't close (e.g. TL was misread and zero-NCL inference was wrong),
+    downgrade TL to CONFIDENCE_LOW and emit a WARNING. This is a diagnostic
+    signal only — it does not attempt further repair.
     """
     tl = fields.get("Total Liabilities")
     cl = fields.get("Current Liabilities")
@@ -294,28 +288,32 @@ def apply_math_repairs(
 ) -> Dict[str, FieldValue]:
     """Apply multi-phase math repair to extracted fields.
 
-    Pre-phases:
-      0A — Null-CoS-without-GP
-      0B — Zero-NCL inference (structurally guarded)
-      0C — OPL anchor from PBT (CONFIDENCE_INFERRED, refinable)
+    Pre-phases (always run):
+      0A — Null-CoS-without-GP: prevents false CoS on services-only P&L
+      0B — Zero-NCL inference: CL = TL when NCL is structurally absent
+           (guarded: suppressed if any row scores >= 80 on NCL keywords)
 
-    Repair phases (per EQUATION):
-      1   — Digit mutation
-      1.5 — Column selection (row_candidates)
-      1.6 — Joint solver: one missing + one misread digit (section-guarded)
-      2   — Sniper OCR re-recognition
-      3   — Inverse search: one missing field, scan all tokens
-             (single-token + DPI-scaled split-merge)
+    Repair phases (per EQUATION, requires at least one field to be wrong):
+      1   — Digit mutation: flip one OCR-confused character per field
+      1.5 — Column selection: try alternate column values from row_candidates
+      1.6 — Joint solver (optimization_mode): one field missing + one misread;
+             mutate the digit, derive implied missing value, scan tokens
+      2   — Sniper OCR: re-OCR the suspicious bounding box
+      3   — Inverse search (optimization_mode): one field missing, scan all
+             tokens (single + DPI-scaled split-merge) for the closing value
 
-    Post-phases:
-      4   — Liabilities closure sanity check
+    Post-phase:
+      4   — Liabilities closure sanity check: warns and downgrades confidence
+             if TL != CL + NCL after all repairs
 
-    All field mutations respect:
+    All mutations respect:
       - _MAX_REPAIRS_PER_FIELD chain cap (prevents equation cross-contamination)
       - _MAX_REPAIR_DELTA_RATIO magnitude guard (heuristic repairs only)
+      - Section guard: tokens on wrong section pages are skipped, except tokens
+        on 'notes' pages which are always allowed as a fallback
     """
     repaired = copy.deepcopy(fields)
-    repair_counts: Dict[str, int] = {}  # field_name -> mutation count this run
+    repair_counts: Dict[str, int] = {}
 
     if logger.isEnabledFor(logging.DEBUG):
         for k, v in fields.items():
@@ -323,11 +321,11 @@ def apply_math_repairs(
                 logger.debug("[REPAIR-IN] %s = %s (conf=%s)", k, v.value,
                              getattr(v, "confidence", "?"))
 
-    # DPI-aware geometry thresholds for split-token merge passes.
+    # DPI-aware geometry thresholds for split-token merge passes
     _Y_MERGE_THRESH = 15 * dpi_scale
     _X_MERGE_GAP_MAX = 60 * dpi_scale
 
-    # --- Pre-phases ---
+    # Pre-phases
     _apply_null_cos_without_gp(repaired)
     _apply_zero_ncl_inference(repaired, table_rows=table_rows, flat_config=flat_config)
 
@@ -372,7 +370,8 @@ def apply_math_repairs(
                         for token in all_tokens:
                             if m_expected_section and page_section_map:
                                 tok_section = page_section_map.get(token.page, "unknown")
-                                if tok_section != "unknown" and tok_section != "notes" and tok_section != m_expected_section:
+                                # Allow: correct section, unknown, or notes (disclosed in notes)
+                                if tok_section not in ("unknown", "notes", m_expected_section):
                                     continue
                             cv = parse_numeric(token.text)
                             if cv is not None and abs(cv - expected) < 0.5:
@@ -402,7 +401,6 @@ def apply_math_repairs(
                                 logger.debug("  [INV] %s = %s", m, cv)
                                 break
                         else:
-                            # Split-token merge pass
                             if m not in repaired or repaired[m].value is None:
                                 sorted_tokens = sorted(
                                     all_tokens,
@@ -415,7 +413,7 @@ def apply_math_repairs(
                                         continue
                                     if m_expected_section and page_section_map:
                                         tok_section = page_section_map.get(ta.page, "unknown")
-                                        if tok_section != "unknown" and tok_section != "notes" and tok_section != m_expected_section:
+                                        if tok_section not in ("unknown", "notes", m_expected_section):
                                             continue
                                     y_overlap = abs(ta.bbox[1] - tb.bbox[1])
                                     x_gap = tb.bbox[0] - ta.bbox[2]
@@ -506,7 +504,7 @@ def apply_math_repairs(
                                 for token in all_tokens:
                                     if m_expected_section and page_section_map:
                                         tok_section = page_section_map.get(token.page, "unknown")
-                                        if tok_section != "unknown" and tok_section != "notes" and tok_section != m_expected_section:
+                                        if tok_section not in ("unknown", "notes", m_expected_section):
                                             continue
                                     cv = parse_numeric(token.text)
                                     if cv is not None and abs(cv - expected) < 0.5:
@@ -526,7 +524,7 @@ def apply_math_repairs(
                                             continue
                                         if m_expected_section and page_section_map:
                                             tok_section = page_section_map.get(ta.page, "unknown")
-                                            if tok_section != "unknown" and tok_section != "notes" and tok_section != m_expected_section:
+                                            if tok_section not in ("unknown", "notes", m_expected_section):
                                                 continue
                                         y_overlap = abs(ta.bbox[1] - tb.bbox[1])
                                         x_gap = tb.bbox[0] - ta.bbox[2]
@@ -667,7 +665,7 @@ def apply_math_repairs(
                     field, current_val, cand_val, repair_type,
                 )
 
-    # --- Post-phase: liabilities closure sanity check ---
+    # Post-phase: liabilities closure sanity check
     _check_liabilities_closure(repaired)
 
     return repaired
