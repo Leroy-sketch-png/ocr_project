@@ -266,10 +266,10 @@ def extract_fields(
                             min_dist = dist
                             closest_idx = i
                             
-                    if closest_idx is not None and min_dist < (400.0 * dpi_scale):
+                    if closest_idx is not None and min_dist < (150.0 * dpi_scale):
                         best_cell_idx = closest_idx
                         
-                if best_cell_idx is None:
+                if best_cell_idx is None and target_x is None:
                     best_abs = -1.0
                     for idx in range(len(row.cells)):
                         v = parse_numeric(row.cells[idx])
@@ -279,7 +279,7 @@ def extract_fields(
                     if best_cell_idx is None:
                         best_cell_idx = 0
 
-                raw_text = row.cells[best_cell_idx] if row.cells else None
+                raw_text = row.cells[best_cell_idx] if (row.cells and best_cell_idx is not None) else None
                 val = parse_numeric(raw_text)
                 
                 field_cfg = flat_config.get(field_name, {})
@@ -338,7 +338,7 @@ def extract_fields(
                 if should_update:
                     best_scores[field_name] = best_kw_score
                     tokens_for_field = (
-                        row.cell_tokens[best_cell_idx] if row.cell_tokens else []
+                        row.cell_tokens[best_cell_idx] if (row.cell_tokens and best_cell_idx is not None) else []
                     )
 
                     row_cands = []
@@ -473,7 +473,7 @@ def extract_fields(
                 max_cx = max(t.bbox[2] for t in tokens)
                 center_x = (min_cx + max_cx) / 2.0
                 dist = abs(center_x - yr_x)
-                if dist < min_dist and dist < (400.0 * dpi_scale):
+                if dist < min_dist and dist < (150.0 * dpi_scale):
                     min_dist = dist
                     best_cell_idx = i
 

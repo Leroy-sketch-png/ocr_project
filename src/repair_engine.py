@@ -332,12 +332,106 @@ def apply_math_repairs(
                                     continue
                         break
 
+        best_repair = None
+
+        # Phase 1.6: joint mutation with missing field search
+        # Handles the catch-22 where one field is wrong (misread digit) and another is missing (None),
+        # so neither can be corrected alone. We speculatively mutate the wrong field, compute the expected
+        # missing value to balance the equation, and scan all_tokens for a match.
+        if not best_repair and optimization_mode and all_tokens is not None:
+            missing_fields = [s for s in suspects if s not in repaired or repaired[s].value is None]
+            if len(missing_fields) == 1:
+                m = missing_fields[0]
+                others = [s for s in suspects if s != m]
+                if all(s in repaired and repaired[s].value is not None for s in others):
+                    # If the equation already balances with the missing field as 0, do not mutate/search
+                    if m == target:
+                        val_others = sum(repaired[s].value for s in summands if s != m)
+                        is_balanced = abs(val_others) < _RESIDUAL_TOLERANCE
+                    else:
+                        val_others = sum(repaired[s].value for s in summands if s != m)
+                        is_balanced = abs(repaired[target].value - val_others) < _RESIDUAL_TOLERANCE
+                    if not is_balanced:
+                        for suspect_a in others:
+                            raw_a = repaired[suspect_a].raw_text
+                            if not raw_a:
+                                continue
+                            old_a = repaired[suspect_a].value
+                            for cand_a in generate_candidates(raw_a):
+                                cv_a = parse_numeric(cand_a)
+                                if cv_a is None or cv_a == old_a:
+                                    continue
+                                repaired[suspect_a].value = cv_a
+                                if m == target:
+                                    expected = sum(repaired[s].value for s in summands)
+                                else:
+                                    expected = repaired[target].value - sum(
+                                        repaired[s].value for s in summands if s != m
+                                    )
+                                if abs(expected) < _RESIDUAL_TOLERANCE:
+                                    continue
+                                if cv_a != old_a and abs(expected) < 100.0:
+                                    continue
+                                    
+                                # Search for expected value
+                                matched_token = None
+                                matched_val = None
+                                for token in all_tokens:
+                                    cv = parse_numeric(token.text)
+                                    if cv is not None and abs(cv - expected) < 0.5:
+                                        matched_token = token
+                                        matched_val = cv
+                                        break
+                                        
+                                if not matched_token:
+                                    sorted_tokens = sorted(all_tokens, key=lambda t: (t.page, t.bbox[1], t.bbox[0]))
+                                    for idx in range(len(sorted_tokens) - 1):
+                                        ta = sorted_tokens[idx]
+                                        tb = sorted_tokens[idx + 1]
+                                        if ta.page != tb.page:
+                                            continue
+                                        y_overlap = abs(ta.bbox[1] - tb.bbox[1])
+                                        x_gap = tb.bbox[0] - ta.bbox[2]
+                                        if y_overlap > 15 or x_gap < 0 or x_gap > 60:
+                                            continue
+                                        merged_text = ta.text + tb.text
+                                        cv = parse_numeric(merged_text)
+                                        if cv is not None and abs(cv - expected) < 0.5:
+                                            matched_val = cv
+                                            matched_token = Token(
+                                                text=merged_text,
+                                                bbox=(ta.bbox[0], ta.bbox[1], tb.bbox[2], tb.bbox[3]),
+                                                page=ta.page,
+                                                confidence=min(ta.confidence, tb.confidence)
+                                            )
+                                            break
+                                            
+                                if matched_token and matched_val is not None:
+                                    # Fill the missing field on the spot
+                                    if m in repaired:
+                                        repaired[m].value = matched_val
+                                        repaired[m].raw_text = matched_token.text
+                                        repaired[m].page = matched_token.page
+                                        repaired[m].bbox = matched_token.bbox
+                                        repaired[m].reason = "inverse_search_merged" if len(matched_token.text) > len(ta.text) else "inverse_search"
+                                        repaired[m].confidence = CONFIDENCE_MEDIUM
+                                        repaired[m].tokens = [matched_token]
+                                    else:
+                                        repaired[m] = _make_field_value(
+                                            m, matched_val, matched_token.text, matched_token,
+                                            "inverse_search", CONFIDENCE_MEDIUM,
+                                        )
+                                    logger.debug("  [INV-JOINT] filled missing field %s = %s", m, matched_val)
+                                    best_repair = (suspect_a, cand_a, cv_a, "equation_anchored")
+                                    break
+                            repaired[suspect_a].value = old_a
+                            if best_repair:
+                                break
+
         # Recompute after inverse search
         residual = compute_equation_residual(repaired, target, summands)
-        if residual is None or _residual_ok(residual):
+        if (residual is None or _residual_ok(residual)) and not best_repair:
             continue
-
-        best_repair = None
 
         # Phase 1: digit mutation
         for suspect in suspects:
@@ -379,6 +473,7 @@ def apply_math_repairs(
                         break
                 if best_repair:
                     break
+
 
         # Phase 2: sniper OCR
         if not best_repair:

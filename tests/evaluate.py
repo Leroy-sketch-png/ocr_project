@@ -40,7 +40,7 @@ def run_pipeline(pdf_path: Path) -> Dict[str, Any]:
 
 
 def score_field(
-    expected: Optional[float], extracted: Optional[float]
+    expected: Any, extracted: Any
 ) -> int:
     """Return 100 (correct) or 0 (wrong/missing/false-positive)."""
     # Both None -> correct
@@ -52,6 +52,9 @@ def score_field(
     # Expected a value but got None -> missing -> wrong
     if expected is not None and extracted is None:
         return 0
+    # Handle string comparison
+    if isinstance(expected, str) or isinstance(extracted, str):
+        return 100 if expected == extracted else 0
     # Both present -> numeric comparison with tolerance
     return 100 if abs(extracted - expected) <= _TOLERANCE else 0
 
