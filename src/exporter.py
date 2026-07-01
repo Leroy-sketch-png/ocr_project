@@ -39,6 +39,7 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
     if getattr(f, "multi_year", None):
         base["years"] = {
             str(yr): {
+                "field_label": yfv.field_label,
                 "value": yfv.value,
                 "raw_text": yfv.raw_text,
                 "confidence": getattr(yfv, "confidence", "high"),

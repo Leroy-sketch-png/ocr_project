@@ -4,12 +4,14 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from .cell_ocr import targeted_ocr
+from .field_extractor import compute_match_score
 from .models import (
     CONFIDENCE_HIGH,
     CONFIDENCE_INFERRED,
     CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
     FieldValue,
+    TableRow,
     Token,
 )
 from .value_parser import parse_numeric
@@ -127,7 +129,7 @@ def _is_safe_repair(
         return False
     if repair_type in ("sign_flip", "column_selection", "equation_anchored"):
         return True
-    if current_val is None or current_val == 0.0:
+    if current_val is None or abs(current_val) < 1e-9:
         return True
     return abs(proposed_val - current_val) / abs(current_val) <= _MAX_REPAIR_DELTA_RATIO
 
@@ -160,6 +162,7 @@ def _make_field_value(
     token: Optional[Token],
     reason: str,
     confidence: str,
+    field_label: Optional[str] = None,
 ) -> FieldValue:
     return FieldValue(
         name=name,
@@ -171,6 +174,7 @@ def _make_field_value(
         valid=True,
         reason=reason,
         confidence=confidence,
+        field_label=field_label,
     )
 
 
@@ -222,7 +226,6 @@ def _apply_zero_ncl_inference(
     if table_rows is not None and flat_config is not None:
         ncl_cfg = flat_config.get("Non-Current Liabilities", {})
         ncl_kws = ncl_cfg.get("keywords", []) if isinstance(ncl_cfg, dict) else []
-        from .field_extractor import compute_match_score
         for row in table_rows:
             desc_lower = row.description.lower()
             for kw in ncl_kws:
@@ -244,6 +247,113 @@ def _apply_zero_ncl_inference(
         valid=True,
         reason="zero_ncl_inference",
         confidence=CONFIDENCE_INFERRED,
+    )
+
+
+def _apply_cl_inference(
+    fields: Dict[str, FieldValue],
+    table_rows: Optional[List[TableRow]] = None,
+) -> None:
+    """
+    If Current Liabilities is missing but Non-Current Liabilities and
+    Total Liabilities are present, infer CL = TL - NCL.
+    This handles IFRS balance sheets where CL is an unlabeled subtotal
+    that appears as a row with no description text.
+    """
+    tl = fields.get("Total Liabilities")
+    ncl = fields.get("Non-Current Liabilities")
+    cl = fields.get("Current Liabilities")
+    if not (
+        tl is not None and tl.value is not None
+        and ncl is not None and ncl.value is not None
+        and (cl is None or cl.value is None)
+    ):
+        return
+
+    inferred_cl = tl.value - ncl.value
+    if inferred_cl < 0:
+        return
+
+    # Try to find the row matching this value for evidence
+    raw_text = str(inferred_cl)
+    page = tl.page
+    tokens = tl.tokens
+    bbox = tl.bbox
+    if table_rows is not None:
+        for row in table_rows:
+            for cell_text in row.cells:
+                try:
+                    cv = float(cell_text.replace(",", "").replace("(", "").replace(")", "").replace(" ", ""))
+                    if abs(cv - inferred_cl) < 0.5:
+                        raw_text = cell_text
+                        page = row.page
+                        break
+                except (ValueError, AttributeError):
+                    continue
+
+    logger.debug("[CL-INFER] CL = TL - NCL = %s - %s = %s", tl.value, ncl.value, inferred_cl)
+    fields["Current Liabilities"] = FieldValue(
+        name="Current Liabilities",
+        value=inferred_cl,
+        raw_text=raw_text,
+        page=page,
+        tokens=tokens,
+        bbox=bbox,
+        valid=True,
+        reason="cl_inference",
+        confidence=CONFIDENCE_INFERRED,
+    )
+
+
+def _apply_zero_nca_inference(
+    fields: Dict[str, FieldValue],
+    table_rows: Optional[List[TableRow]] = None,
+    flat_config: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    If Total Assets is present, but Non-Current Assets and Plant and Equipment
+    are missing (None), and there is no structural NCA candidate,
+    infer Non-Current Assets = 0.0 so we can solve Current Assets = Total Assets.
+    """
+    ta = fields.get("Total Assets")
+    nca = fields.get("Non-Current Assets")
+    pe = fields.get("Plant and Equipment")
+
+    if ta is None or ta.value is None:
+        return
+
+    # Only run if both NCA and PE are missing
+    if (nca is not None and nca.value is not None) or (pe is not None and pe.value is not None):
+        return
+
+    # Check for any structural NCA keywords in table rows
+    if table_rows is not None and flat_config is not None:
+        nca_cfg = flat_config.get("Non-Current Assets", {})
+        nca_kws = nca_cfg.get("keywords", []) if isinstance(nca_cfg, dict) else []
+        pe_cfg = flat_config.get("Plant and Equipment", {})
+        pe_kws = pe_cfg.get("keywords", []) if isinstance(pe_cfg, dict) else []
+        kws = nca_kws + pe_kws
+        for row in table_rows:
+            desc_lower = row.description.lower()
+            for kw in kws:
+                if compute_match_score(kw, desc_lower) >= 80:
+                    logger.debug(
+                        "[ZERO-NCA] Suppressed — structural NCA candidate (score>=80): '%s'",
+                        row.description,
+                    )
+                    return
+
+    logger.debug("[ZERO-NCA] Inferring NCA = 0.0")
+    fields["Non-Current Assets"] = FieldValue(
+        name="Non-Current Assets",
+        value=0.0,
+        raw_text="0",
+        page=ta.page,
+        tokens=[],
+        bbox=None,
+        valid=True,
+        reason="zero_nca_inference",
+        confidence=CONFIDENCE_LOW,
     )
 
 
@@ -305,15 +415,9 @@ def apply_math_repairs(
     Post-phase:
       4   — Liabilities closure sanity check: warns and downgrades confidence
              if TL != CL + NCL after all repairs
-
-    All mutations respect:
-      - _MAX_REPAIRS_PER_FIELD chain cap (prevents equation cross-contamination)
-      - _MAX_REPAIR_DELTA_RATIO magnitude guard (heuristic repairs only)
-      - Section guard: tokens on wrong section pages are skipped, except tokens
-        on 'notes' pages which are always allowed as a fallback
     """
     repaired = copy.deepcopy(fields)
-    repair_counts: Dict[str, int] = {}
+    repair_counts = {}
 
     if logger.isEnabledFor(logging.DEBUG):
         for k, v in fields.items():
@@ -328,6 +432,8 @@ def apply_math_repairs(
     # Pre-phases
     _apply_null_cos_without_gp(repaired)
     _apply_zero_ncl_inference(repaired, table_rows=table_rows, flat_config=flat_config)
+    _apply_cl_inference(repaired, table_rows=table_rows)
+    _apply_zero_nca_inference(repaired, table_rows=table_rows, flat_config=flat_config)
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands
@@ -375,6 +481,20 @@ def apply_math_repairs(
                                     continue
                             cv = parse_numeric(token.text)
                             if cv is not None and abs(cv - expected) < 0.5:
+                                # Verify safety of proposed mutations
+                                safe = True
+                                for s, (_, val) in zip(others, combo):
+                                    if repaired[s].value != val:
+                                        if not _is_safe_repair(repaired[s].value, val, "inverse_search_combinatorial", repair_counts, s):
+                                            safe = False
+                                            break
+                                if safe:
+                                    m_curr = repaired[m].value if m in repaired else None
+                                    if not _is_safe_repair(m_curr, cv, "inverse_search", repair_counts, m):
+                                        safe = False
+                                if not safe:
+                                    continue
+
                                 for s, (raw, val) in zip(others, combo):
                                     if repaired[s].value != val:
                                         repaired[s].value = val
@@ -424,6 +544,9 @@ def apply_math_repairs(
                                     if cv is None:
                                         continue
                                     if abs(cv - expected) < 0.5:
+                                        m_curr = repaired[m].value if m in repaired else None
+                                        if not _is_safe_repair(m_curr, cv, "inverse_search_merged", repair_counts, m):
+                                            continue
                                         merged_token = Token(
                                             text=merged_text,
                                             bbox=(ta.bbox[0], ta.bbox[1], tb.bbox[2], tb.bbox[3]),

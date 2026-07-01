@@ -350,8 +350,9 @@ def extract_fields(
                                 if row.page < existing_page:
                                     should_update = True
                                 elif row.page == existing_page:
-                                    if abs(val) > abs(existing_val):
-                                        should_update = True
+                                    # Keep first match on same page — avoids overwriting
+                                    # the correct NCL Borrowings with a CL sub-item.
+                                    should_update = False
                                 elif abs(val) > abs(existing_val) * 10:
                                     # Overwrite tiny text mentions with large table values
                                     should_update = True
