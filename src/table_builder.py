@@ -34,11 +34,7 @@ SECTION_MARKERS = {
     ],
 }
 
-# A TOC line looks like:  SECTION NAME   <2+ spaces>  <page number 1-999>
-# Financial values are always >= 1000 in real reports (expressed in thousands).
-# Page numbers in TOCs are always short (1-3 digits, 1-999).
-# Also require minimum line length of 15 to exclude very short stub lines.
-_TOC_LINE_RE = re.compile(r'^.{15,}\s{2,}(\d{1,3})\s*$')
+_TOC_LINE_RE = re.compile(r'^.{15,}\s+(\d{1,3})\s*$')
 
 
 def detect_page_sections(
@@ -111,6 +107,9 @@ def detect_page_sections(
                 "statement of financial statements",
             ):
                 current_section = "balance_sheet"
+                matched = True
+            elif stripped == "notes" and block.page >= 2:
+                current_section = "notes"
                 matched = True
 
         if block.page not in page_section:
