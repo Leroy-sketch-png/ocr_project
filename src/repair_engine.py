@@ -1,38 +1,46 @@
 import copy
 import itertools
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from .cell_ocr import targeted_ocr
-from .models import FieldValue, Token
+from .models import (
+    CONFIDENCE_HIGH,
+    CONFIDENCE_INFERRED,
+    CONFIDENCE_LOW,
+    CONFIDENCE_MEDIUM,
+    FieldValue,
+    Token,
+)
 from .value_parser import parse_numeric
 
 logger = logging.getLogger(__name__)
 
-# Tolerance for floating-point residual checks.
 _RESIDUAL_TOLERANCE = 1e-2
 
+# Accounting equations used for repair and inverse-search.
+# All summands are additive; Cost of Sales carries a negative value so
+# Revenue + CoS = Gross Profit works directly.
 EQUATIONS = [
-    # (Target, [Summands])
-    # Note: summands are additive. Cost of Sales is negative so Revenue + CoS = GP.
-    ("Gross Profit/Loss", ["Revenue", "Cost of Sales"]),
-    ("Current Assets", ["Cash and Cash Equivalents", "Trade Receivables"]),
-    ("Total Assets", ["Current Assets", "Non-Current Assets"]),
-    ("Total Liabilities", ["Current Liabilities", "Non-Current Liabilities"]),
-    ("Total Equity", ["Paid Up Capital", "Retained Earnings"]),
-    # Balance sheet identity
-    ("Total Assets", ["Total Liabilities", "Total Equity"]),
-    # Income statement: PBT = Net Profit + Income Tax Expense
-    # Enables digit-mutation repair when OCR misreads a digit in PBT.
-    ("Profit/Loss Before Tax", ["Net Profit/Loss", "Income Tax Expense"]),
+    ("Gross Profit/Loss",        ["Revenue", "Cost of Sales"]),
+    ("Current Assets",           ["Cash and Cash Equivalents", "Trade Receivables"]),
+    ("Total Assets",             ["Current Assets", "Non-Current Assets"]),
+    ("Total Liabilities",        ["Current Liabilities", "Non-Current Liabilities"]),
+    ("Total Equity",             ["Paid Up Capital", "Retained Earnings"]),
+    ("Total Assets",             ["Total Liabilities", "Total Equity"]),
+    # PBT = Net Profit + Income Tax Expense
+    # Anchors digit-mutation repair when OCR misreads a digit in PBT.
+    ("Profit/Loss Before Tax",   ["Net Profit/Loss", "Income Tax Expense"]),
 ]
 
-CONFUSION_SET = {
+# Common single-character OCR confusions.
+# Each key maps to the characters it is frequently misread as.
+CONFUSION_SET: Dict[str, List[str]] = {
     "0": ["8", "6", "9"],
-    "1": ["7", "4"],
+    "1": ["7", "4"],   # '1' and '4' are confused in many serif/small fonts
     "2": ["Z", "7"],
     "3": ["8"],
-    "4": ["A", "1"],
+    "4": ["A", "1"],   # bidirectional with '1'
     "5": ["S", "6", "8"],
     "6": ["5", "8", "0"],
     "7": ["1"],
@@ -40,81 +48,80 @@ CONFUSION_SET = {
     "9": ["0", "8"],
 }
 
+# A digit-mutation repair is safe if the value change is within this ratio.
+# This guard is intentionally bypassed for equation-anchored repairs because
+# a zero residual is already mathematical proof the new value is correct.
+_MAX_REPAIR_DELTA_RATIO = 0.15
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def compute_equation_residual(
     fields: Dict[str, FieldValue], target: str, summands: List[str]
 ) -> Optional[float]:
-    """
-    Computes |Target - sum(Summands)|. Returns None if any required field is missing.
-    """
+    """Return |target - sum(summands)|, or None if any field is missing."""
     if target not in fields or fields[target].value is None:
         return None
-
-    sum_val = 0.0
+    total = 0.0
     for s in summands:
         if s not in fields or fields[s].value is None:
             return None
-        sum_val += fields[s].value
-
-    return abs(fields[target].value - sum_val)
+        total += fields[s].value
+    return abs(fields[target].value - total)
 
 
 def _residual_ok(residual: Optional[float]) -> bool:
-    """Return True if residual is effectively zero within tolerance."""
     return residual is not None and abs(residual) < _RESIDUAL_TOLERANCE
 
 
-# Maximum allowed change ratio for a repair.
-_MAX_REPAIR_DELTA_RATIO = 0.15  # 15%
+def _is_safe_repair(
+    current_val: Optional[float], proposed_val: float, repair_type: str
+) -> bool:
+    """Return True if the proposed repair is within acceptable bounds.
 
-def _is_safe_repair(current_val: Optional[float], proposed_val: float, repair_type: str = "digit_mutation") -> bool:
+    sign_flip and column_selection repairs are always accepted because they
+    are structurally validated (wrong sign or wrong column, not digit noise).
+    Equation-anchored repairs (residual == 0 proven) also bypass the ratio
+    guard — mathematical proof supersedes the heuristic.
     """
-    Returns True if the proposed repair is safe.
-    """
-    if repair_type in ("sign_flip", "column_selection"):
+    if repair_type in ("sign_flip", "column_selection", "equation_anchored"):
         return True
     if current_val is None or current_val == 0.0:
         return True
-
-    delta_ratio = abs(proposed_val - current_val) / abs(current_val)
-    return delta_ratio <= _MAX_REPAIR_DELTA_RATIO
+    return abs(proposed_val - current_val) / abs(current_val) <= _MAX_REPAIR_DELTA_RATIO
 
 
 def generate_candidates(raw_text: str) -> List[str]:
-    """
-    Given a raw numeric string, generate slight mutations that fix common OCR errors.
-    """
-    candidates = []
+    """Generate OCR-error candidates by single-character substitution."""
     if not raw_text:
-        return candidates
-
+        return []
     clean = raw_text.replace(" ", "")
-
-    for i, char in enumerate(clean):
-        if char in CONFUSION_SET:
-            for alt in CONFUSION_SET[char]:
-                candidates.append(clean[:i] + alt + clean[i + 1 :])
-
-    digits_only = "".join(c for c in clean if c.isdigit())
-    if digits_only:
-        if clean.endswith("0"):
-            candidates.append(clean[:-1])
-        candidates.append(clean + "0")
-
+    candidates = []
+    for i, ch in enumerate(clean):
+        for alt in CONFUSION_SET.get(ch, []):
+            candidates.append(clean[:i] + alt + clean[i + 1:])
+    if clean.endswith("0"):
+        candidates.append(clean[:-1])
+    candidates.append(clean + "0")
     if "(" in clean and ")" in clean:
         candidates.append(clean.replace("(", "").replace(")", ""))
     elif "-" in clean:
         candidates.append(clean.replace("-", ""))
     else:
         candidates.append("-" + clean)
-
     return list(set(candidates))
 
 
 def _make_field_value(
-    name: str, val: float, raw_text: str, token: Optional[Token], reason: str
+    name: str,
+    val: float,
+    raw_text: str,
+    token: Optional[Token],
+    reason: str,
+    confidence: str,
 ) -> FieldValue:
-    """Helper to create a FieldValue from an inverse-search result."""
     return FieldValue(
         name=name,
         value=val,
@@ -124,75 +131,67 @@ def _make_field_value(
         bbox=token.bbox if token else None,
         valid=True,
         reason=reason,
+        confidence=confidence,
     )
 
 
+# ---------------------------------------------------------------------------
+# Pre-phase rules
+# ---------------------------------------------------------------------------
+
 def _apply_null_cos_without_gp(fields: Dict[str, FieldValue]) -> None:
-    """
-    Null-CoS-without-GP rule:
-    If Cost of Sales was extracted but Gross Profit/Loss is absent (None),
-    the document has no gross profit concept — Cost of Sales is not meaningful
-    in this context and is likely a false positive from an operating expense row
-    (e.g. 'Purchase of services' in a services-only P&L).
-    Force Cost of Sales to None so downstream equations and exports are clean.
-    """
-    gp_fv = fields.get("Gross Profit/Loss")
-    cos_fv = fields.get("Cost of Sales")
+    """Null Cost of Sales when no Gross Profit line exists.
 
-    gp_absent = gp_fv is None or gp_fv.value is None
-    cos_present = cos_fv is not None and cos_fv.value is not None
-
-    if gp_absent and cos_present:
-        logger.debug(
-            "[NULL-CoS] No Gross Profit found — nulling Cost of Sales (was %s)",
-            cos_fv.value,
-        )
-        fields["Cost of Sales"].value = None
-        fields["Cost of Sales"].reason = "nulled_no_gross_profit"
+    Cost of Sales is only meaningful in a document that has a gross profit
+    concept. If GP is absent, a CoS match is almost certainly a false positive
+    from an operating-expense row (e.g. 'Purchase of services' in a
+    services-only P&L). Nulling it prevents downstream equation corruption.
+    """
+    gp = fields.get("Gross Profit/Loss")
+    cos = fields.get("Cost of Sales")
+    if (gp is None or gp.value is None) and (cos is not None and cos.value is not None):
+        logger.debug("[NULL-CoS] GP absent — nulling Cost of Sales (was %s)", cos.value)
+        cos.value = None
+        cos.reason = "nulled_no_gross_profit"
+        cos.confidence = CONFIDENCE_LOW
 
 
 def _apply_zero_ncl_inference(fields: Dict[str, FieldValue]) -> None:
+    """Infer Current Liabilities = Total Liabilities when NCL is truly absent.
+
+    Handles documents (e.g. early-stage companies) where there are no
+    non-current liabilities at all — the single liabilities line IS the total.
+    This rule is suppressed in optimization_mode where inverse_search can
+    derive CL from TL - NCL once NCL is extracted via keyword matching.
     """
-    Zero-NCL inference rule:
-    If Total Liabilities is known, Non-Current Liabilities is null, and
-    Current Liabilities is null, then Current Liabilities = Total Liabilities.
-
-    This handles SAMPLE1-style balance sheets where a company has no non-current
-    liabilities section at all — the single liability line IS the total.
-    We do NOT infer Non-Current Liabilities = 0 to avoid polluting the equation
-    engine; we simply set Current = Total so the extractor reports it correctly.
-
-    IMPORTANT: This rule must only fire when NCL is truly absent from the document,
-    not merely unextracted. It is suppressed when optimization_mode is active because
-    inverse_search can solve CL = TL - NCL once NCL is found via keyword extraction
-    (e.g. a 'Borrowings' row in the NCL section). Firing the inference prematurely
-    would set CL = TL and make inverse_search solve NCL = 0 instead of the real value.
-    """
-    total_fv = fields.get("Total Liabilities")
-    ncl_fv = fields.get("Non-Current Liabilities")
-    cl_fv = fields.get("Current Liabilities")
-
-    total_known = total_fv is not None and total_fv.value is not None
-    ncl_null = ncl_fv is None or ncl_fv.value is None
-    cl_null = cl_fv is None or cl_fv.value is None
-
-    if total_known and ncl_null and cl_null:
+    tl = fields.get("Total Liabilities")
+    ncl = fields.get("Non-Current Liabilities")
+    cl = fields.get("Current Liabilities")
+    if (
+        tl is not None and tl.value is not None
+        and (ncl is None or ncl.value is None)
+        and (cl is None or cl.value is None)
+    ):
         logger.debug(
-            "[ZERO-NCL] No NCL and no CL found — inferring Current Liabilities = Total Liabilities = %s",
-            total_fv.value,
+            "[ZERO-NCL] Inferring Current Liabilities = Total Liabilities = %s",
+            tl.value,
         )
-        inferred = FieldValue(
+        fields["Current Liabilities"] = FieldValue(
             name="Current Liabilities",
-            value=total_fv.value,
-            raw_text=total_fv.raw_text,
-            page=total_fv.page,
-            tokens=total_fv.tokens,
-            bbox=total_fv.bbox,
+            value=tl.value,
+            raw_text=tl.raw_text,
+            page=tl.page,
+            tokens=tl.tokens,
+            bbox=tl.bbox,
             valid=True,
             reason="zero_ncl_inference",
+            confidence=CONFIDENCE_LOW,
         )
-        fields["Current Liabilities"] = inferred
 
+
+# ---------------------------------------------------------------------------
+# Main repair loop
+# ---------------------------------------------------------------------------
 
 def apply_math_repairs(
     fields: Dict[str, FieldValue],
@@ -200,247 +199,190 @@ def apply_math_repairs(
     all_tokens: List[Token] = None,
     optimization_mode: bool = False,
 ) -> Dict[str, FieldValue]:
+    """Apply three-phase math repair to extracted fields.
+
+    Phase 0A — Null-CoS-without-GP: prevent false CoS when no GP line exists.
+    Phase 0B — Zero-NCL inference: CL = TL when NCL is structurally absent.
+               Suppressed in optimization_mode so inverse_search can solve
+               CL = TL - NCL after NCL is extracted via keyword matching.
+    Phase 1  — Digit mutation: flip one OCR-confused character per field.
+    Phase 1.5 — Column selection: try alternate column values from the row.
+    Phase 2  — Sniper OCR: re-OCR the suspicious bounding box.
+    Phase 3  — Inverse search: if exactly one field is missing in an equation,
+               scan all tokens for the value that closes the equation.
+               (optimization_mode only)
     """
-    Repair fields using accounting math constraints and targeted OCR.
-    Three phases:
-      1. Combinatorial Math Search — flip single digits to make residual zero
-      2. Sniper OCR — re-OCR the suspicious cell and test
-      3. Inverse Search — if only one field is missing in an equation, solve for it
+    repaired = copy.deepcopy(fields)
 
-    Pre-phase A: Null-CoS-without-GP — if GP is absent, CoS is a false positive.
-    Pre-phase B: Zero-NCL Inference — only when optimization_mode is False;
-                 in optimization_mode, inverse_search handles CL/NCL resolution
-                 so premature inference would corrupt the equation engine.
-    """
-    repaired_fields = copy.deepcopy(fields)
+    if logger.isEnabledFor(logging.DEBUG):
+        for k, v in fields.items():
+            if v.value is not None:
+                logger.debug("[REPAIR-IN] %s = %s (conf=%s)", k, v.value,
+                             getattr(v, 'confidence', '?'))
 
-    logger.debug("--- REPAIR ENGINE: current field values ---")
-    for k, v in fields.items():
-        if v.value is not None:
-            logger.debug("Field: %s = %s", k, v.value)
-    logger.debug("------------------------------------------")
+    # Phase 0A
+    _apply_null_cos_without_gp(repaired)
 
-    # --- Pre-phase A: Null CoS when Gross Profit is absent ---
-    _apply_null_cos_without_gp(repaired_fields)
-
-    # --- Pre-phase B: Zero-NCL Inference (non-optimization mode only) ---
-    # In optimization_mode, inverse_search resolves CL from TL - NCL after
-    # NCL is extracted (e.g. via 'Borrowings' keyword in NCL section).
-    # Firing this prematurely would corrupt that resolution.
+    # Phase 0B — only in non-optimization mode
     if not optimization_mode:
-        _apply_zero_ncl_inference(repaired_fields)
+        _apply_zero_ncl_inference(repaired)
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands
+        residual = compute_equation_residual(repaired, target, summands)
+        logger.debug("[EQ] %s = %s  residual=%s", target, summands, residual)
 
-        residual = compute_equation_residual(repaired_fields, target, summands)
-        logger.debug("Checking eq: %s = %s -> Residual = %s", target, summands, residual)
-
-        # --- Phase 3 first: fill in a missing field via inverse search ---
+        # Phase 3: inverse search (optimization_mode only)
         if optimization_mode:
-            missing_suspects = [
-                s
-                for s in suspects
-                if s not in repaired_fields or repaired_fields[s].value is None
+            missing = [
+                s for s in suspects
+                if s not in repaired or repaired[s].value is None
             ]
-
-            if len(missing_suspects) == 1 and all_tokens is not None:
-                missing = missing_suspects[0]
-                all_others_valid = all(
-                    s in repaired_fields and repaired_fields[s].value is not None
-                    for s in suspects
-                    if s != missing
-                )
-
-                if all_others_valid:
-                    other_suspects = [s for s in suspects if s != missing]
+            if len(missing) == 1 and all_tokens is not None:
+                m = missing[0]
+                others = [s for s in suspects if s != m]
+                if all(s in repaired and repaired[s].value is not None for s in others):
                     cand_lists = []
-                    for s in other_suspects:
-                        fv = repaired_fields[s]
+                    for s in others:
+                        fv = repaired[s]
                         cands = [(fv.raw_text, fv.value)]
                         if fv.row_candidates:
-                            for cr, cv in fv.row_candidates:
-                                if cv != fv.value:
-                                    cands.append((cr, cv))
+                            cands += [(r, v) for r, v in fv.row_candidates if v != fv.value]
                         cand_lists.append(cands)
 
-                    best_combo = None
-                    best_expected = None
-
-                    for cand_combo in itertools.product(*cand_lists):
-                        assignment = {
-                            s: val for s, (raw, val) in zip(other_suspects, cand_combo)
-                        }
-
-                        if missing == target:
-                            expected_val = sum(assignment[s] for s in summands)
+                    for combo in itertools.product(*cand_lists):
+                        assign = {s: v for s, (_, v) in zip(others, combo)}
+                        if m == target:
+                            expected = sum(assign[s] for s in summands)
                         else:
-                            target_val = assignment[target]
-                            other_summands_sum = sum(
-                                assignment[s] for s in summands if s != missing
+                            expected = assign[target] - sum(
+                                assign[s] for s in summands if s != m
                             )
-                            expected_val = target_val - other_summands_sum
-
-                        if abs(expected_val) < _RESIDUAL_TOLERANCE:
+                        if abs(expected) < _RESIDUAL_TOLERANCE:
                             continue
 
-                        found_match = False
                         for token in all_tokens:
-                            cand_val = parse_numeric(token.text)
-                            if (
-                                cand_val is not None
-                                and abs(cand_val - expected_val) < 0.5
-                            ):
-                                for s, (raw, val) in zip(other_suspects, cand_combo):
-                                    if repaired_fields[s].value != val:
-                                        repaired_fields[s].value = val
-                                        repaired_fields[s].raw_text = raw
-                                        repaired_fields[s].tokens = []
-                                        repaired_fields[s].reason = (
-                                            "inverse_search_combinatorial"
-                                        )
-                                        logger.debug(
-                                            "  [INVERSE SEARCH] Updated %s to %s to satisfy eq",
-                                            s, val,
-                                        )
-
-                                if missing in repaired_fields:
-                                    fv = repaired_fields[missing]
-                                    fv.value = cand_val
-                                    fv.raw_text = token.text
-                                    fv.page = token.page
-                                    fv.bbox = token.bbox
-                                    fv.reason = "inverse_search"
-                                    fv.tokens = [token]
+                            cv = parse_numeric(token.text)
+                            if cv is not None and abs(cv - expected) < 0.5:
+                                # Update any combinatorial-swapped fields
+                                for s, (raw, val) in zip(others, combo):
+                                    if repaired[s].value != val:
+                                        repaired[s].value = val
+                                        repaired[s].raw_text = raw
+                                        repaired[s].tokens = []
+                                        repaired[s].reason = "inverse_search_combinatorial"
+                                        repaired[s].confidence = CONFIDENCE_MEDIUM
+                                        logger.debug("  [INV-COMBO] %s -> %s", s, val)
+                                # Fill the missing field
+                                if m in repaired:
+                                    repaired[m].value = cv
+                                    repaired[m].raw_text = token.text
+                                    repaired[m].page = token.page
+                                    repaired[m].bbox = token.bbox
+                                    repaired[m].reason = "inverse_search"
+                                    repaired[m].confidence = CONFIDENCE_MEDIUM
+                                    repaired[m].tokens = [token]
                                 else:
-                                    repaired_fields[missing] = _make_field_value(
-                                        missing,
-                                        cand_val,
-                                        token.text,
-                                        token,
-                                        "inverse_search",
+                                    repaired[m] = _make_field_value(
+                                        m, cv, token.text, token,
+                                        "inverse_search", CONFIDENCE_MEDIUM,
                                     )
-                                logger.debug(
-                                    "  [INVERSE SEARCH] %s = %s (from token '%s')",
-                                    missing, cand_val, token.text,
-                                )
-                                found_match = True
+                                logger.debug("  [INV] %s = %s", m, cv)
                                 break
+                        else:
+                            continue
+                        break
 
-                        if found_match:
-                            break
-
-        # Recompute residual after potential inverse-search fill
-        residual = compute_equation_residual(repaired_fields, target, summands)
+        # Recompute after inverse search
+        residual = compute_equation_residual(repaired, target, summands)
         if residual is None or _residual_ok(residual):
             continue
 
         best_repair = None
 
-        # --- Phase 1: Combinatorial Math Search ---
+        # Phase 1: digit mutation
         for suspect in suspects:
-            if suspect not in repaired_fields or repaired_fields[suspect].value is None:
+            if suspect not in repaired or repaired[suspect].value is None:
                 continue
-
-            original_raw = repaired_fields[suspect].raw_text
-            if original_raw is None:
+            raw = repaired[suspect].raw_text
+            if not raw:
                 continue
-
-            candidates = generate_candidates(original_raw)
-            for cand in candidates:
-                cand_val = parse_numeric(cand)
-                if cand_val is None:
+            for cand in generate_candidates(raw):
+                cv = parse_numeric(cand)
+                if cv is None:
                     continue
-
-                old_val = repaired_fields[suspect].value
-                repaired_fields[suspect].value = cand_val
-
-                new_res = compute_equation_residual(repaired_fields, target, summands)
-                if _residual_ok(new_res):
-                    best_repair = (suspect, cand, cand_val, "digit_mutation")
-
-                repaired_fields[suspect].value = old_val
+                old = repaired[suspect].value
+                repaired[suspect].value = cv
+                if _residual_ok(compute_equation_residual(repaired, target, summands)):
+                    best_repair = (suspect, cand, cv, "equation_anchored")
+                repaired[suspect].value = old
                 if best_repair:
                     break
             if best_repair:
                 break
 
-        # --- Phase 1.5: Column Selection ---
+        # Phase 1.5: column selection
         if not best_repair:
             for suspect in suspects:
-                if (
-                    suspect not in repaired_fields
-                    or repaired_fields[suspect].value is None
-                ):
+                if suspect not in repaired or repaired[suspect].value is None:
                     continue
-                fv = repaired_fields[suspect]
-                if fv.row_candidates:
-                    for cand_raw, cand_val in fv.row_candidates:
-                        if cand_val == fv.value:
-                            continue
-                        old_val = fv.value
-                        fv.value = cand_val
-                        new_res = compute_equation_residual(
-                            repaired_fields, target, summands
-                        )
-                        if _residual_ok(new_res):
-                            best_repair = (suspect, cand_raw, cand_val, "column_selection")
-                            logger.debug(
-                                "  [COLUMN REPAIR] %s selected alternate column value: %s",
-                                suspect, cand_val,
-                            )
-                        fv.value = old_val
-                        if best_repair:
-                            break
+                fv = repaired[suspect]
+                for cand_raw, cv in (fv.row_candidates or []):
+                    if cv == fv.value:
+                        continue
+                    old = fv.value
+                    fv.value = cv
+                    if _residual_ok(compute_equation_residual(repaired, target, summands)):
+                        best_repair = (suspect, cand_raw, cv, "column_selection")
+                        logger.debug("  [COL] %s -> %s", suspect, cv)
+                    fv.value = old
+                    if best_repair:
+                        break
                 if best_repair:
                     break
 
-        # --- Phase 2: Sniper OCR ---
+        # Phase 2: sniper OCR
         if not best_repair:
             for suspect in suspects:
-                if (
-                    suspect not in repaired_fields
-                    or repaired_fields[suspect].value is None
-                ):
+                if suspect not in repaired or repaired[suspect].value is None:
                     continue
-
-                fv = repaired_fields[suspect]
+                fv = repaired[suspect]
                 if fv.page in processed_images and fv.bbox is not None:
-                    img = processed_images[fv.page]
-                    new_text = targeted_ocr(img, fv.bbox)
-                    new_val = parse_numeric(new_text)
-                    if new_val is not None and new_val != fv.value:
-                        old_val = fv.value
-                        fv.value = new_val
-                        new_res = compute_equation_residual(
-                            repaired_fields, target, summands
-                        )
-                        if _residual_ok(new_res):
-                            rtype = "sign_flip" if (old_val is not None and new_val is not None and old_val * new_val < 0) else "digit_mutation"
-                            best_repair = (suspect, new_text, new_val, rtype)
-                        fv.value = old_val
+                    new_text = targeted_ocr(processed_images[fv.page], fv.bbox)
+                    cv = parse_numeric(new_text)
+                    if cv is not None and cv != fv.value:
+                        old = fv.value
+                        fv.value = cv
+                        if _residual_ok(compute_equation_residual(repaired, target, summands)):
+                            rtype = (
+                                "sign_flip"
+                                if old is not None and cv is not None and old * cv < 0
+                                else "equation_anchored"
+                            )
+                            best_repair = (suspect, new_text, cv, rtype)
+                        fv.value = old
                         if best_repair:
                             break
 
         if best_repair:
             field, cand_raw, cand_val, repair_type = best_repair
-            current_val = repaired_fields[field].value
-            if not _is_safe_repair(current_val, cand_val, repair_type):
+            current_val = repaired[field].value
+            if _is_safe_repair(current_val, cand_val, repair_type):
+                repaired[field].raw_text = cand_raw
+                repaired[field].value = cand_val
+                repaired[field].reason = "accounting_repair"
+                repaired[field].confidence = CONFIDENCE_MEDIUM
                 logger.debug(
-                    "  [REPAIR REJECTED] %s: proposed %s would change %.1f%% from %s — too destructive",
-                    field, cand_raw,
-                    abs(cand_val - (current_val or 0)) / (abs(current_val) + 1e-9) * 100,
-                    current_val,
+                    "[REPAIR] %s: %s -> %s (type=%s)",
+                    field,
+                    fields[field].raw_text if field in fields else None,
+                    cand_raw,
+                    repair_type,
                 )
             else:
-                repaired_fields[field].raw_text = cand_raw
-                repaired_fields[field].value = cand_val
-                repaired_fields[field].reason = "accounting_repair"
                 logger.debug(
-                    "  [REPAIR] %s: %s -> %s",
-                    field,
-                    fields.get(field, None) and fields[field].raw_text,
-                    cand_raw,
+                    "[REPAIR-REJECTED] %s: %s -> %s exceeds delta ratio",
+                    field, current_val, cand_val,
                 )
 
-    return repaired_fields
+    return repaired

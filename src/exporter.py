@@ -8,6 +8,7 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
         return {
             "field_label": None,
             "value": None,
+            "confidence": None,
             "evidence": None,
             "page": None,
         }
@@ -25,6 +26,7 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
     base = {
         "field_label": f.field_label,
         "value": f.value,
+        "confidence": getattr(f, "confidence", "high"),
         "raw_text": f.raw_text,
         "evidence": evidence_text,
         "page": page,
@@ -39,6 +41,7 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
             str(yr): {
                 "value": yfv.value,
                 "raw_text": yfv.raw_text,
+                "confidence": getattr(yfv, "confidence", "high"),
                 "page": yfv.page,
                 "bbox": list(yfv.bbox) if yfv.bbox else None,
             }
