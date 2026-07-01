@@ -5,14 +5,22 @@ ProfitAndLoss:
   Gross Profit/Loss:
     keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)", "Gross margin"]
   Profit/Loss Before Tax:
-    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax", "Income before provision for income taxes", "Income before income taxes", "Earnings before tax", "EBT"]
+    keywords: ["Profit Before Tax", "Loss Before Tax", "PBT", "Result before tax", "Profit/(loss) before tax", "Income before provision for income taxes", "Income before income taxes", "Earnings before tax", "EBT", "Profit / (Loss) before tax from continuing operations"]
   Net Profit/Loss:
-    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss", "Net income"]
+    keywords: ["Net Profit", "Net Loss", "Profit for the Year", "Net Profit/Loss", "Annual result", "Annual on result", "Net profit / (loss)", "Net profit (loss)", "Profit / (loss) for the year", "Total comprehensive income", "Total comprehensive profit", "Total comprehensive loss", "Net income", "total comprehensive income for the year"]
   Operating Profit/Loss:
     keywords: ["Operating Profit", "Operating Loss", "Operating Profit/Loss", "Result of operations", "Operating profit / (loss)", "Operating income", "Income from operations"]
   Cost of Sales:
     sign: negative
-    keywords: ["Cost of Sales", "Cost of Goods Sold", "Total Operating expenses", "Total Operating Staff Depreciation", "Cost of revenue"]
+    keywords:
+      - "Cost of Sales"
+      - "Cost of Goods Sold"
+      - "Cost of revenue"
+      - "Less: Cost of sales"
+      - "Direct costs"
+      - "Cost of services"
+      # NOTE: Do NOT include 'Total Operating expenses' here — that is a different line item
+      # that maps to Total_Operating_Expenses, not Cost of Sales.
 
 Assets:
   _section: balance_sheet
@@ -23,6 +31,9 @@ Assets:
   Non-Current Assets:
     keywords: ["Non-Current Assets", "Noncurrent Assets", "Total fixed assets", "Total Non-Current Assets", "Total non-current asset"]
   Plant and Equipment:
+    # IMPORTANT: 'Right-of-use assets' is a SEPARATE line item (IFRS 16 lease asset).
+    # It must NOT be conflated with Plant and Equipment (PP&E).
+    # PP&E is the physical assets line only. ROU assets live under 'Right of Use Assets' field below.
     _section: ""
     keywords:
       - "Plant and Equipment"
@@ -35,9 +46,17 @@ Assets:
       - "Fixtures and fittings"
       - "Machinery and equipment"
       - "Plant, machinery and equipment"
-      - "Right-of-use assets"
-      - "Lease assets"
       - "Equipment"
+  Right of Use Assets:
+    # IFRS 16 lease asset — separate from PP&E.
+    # Ground truth SAMPLE3: Right-of-use assets = 5,595 (FY2023), 886 (FY2022).
+    _section: ""
+    keywords:
+      - "Right-of-use assets"
+      - "Right of use assets"
+      - "Lease assets"
+      - "ROU assets"
+      - "Right-of-use asset"
   Trade Receivables:
     keywords:
       - "Trade Receivables"
@@ -75,8 +94,9 @@ Liabilities:
       - "Long term liabilities"
       - "Lease liabilities"
       - "Long-term borrowings"
-      - "Borrowings"
       - "Finance lease liabilities"
+      # NOTE: 'Borrowings' alone is too generic — it matches both current and non-current.
+      # Removed from here to prevent false collision with Current Liabilities.
   Total Liabilities:
     keywords: ["Total Liabilities", "Total ilities"]
 
