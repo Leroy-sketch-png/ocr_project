@@ -10,7 +10,6 @@ from .value_parser import parse_numeric
 logger = logging.getLogger(__name__)
 
 # Tolerance for floating-point residual checks.
-# Using exact == 0.0 is unsafe due to float representation errors.
 _RESIDUAL_TOLERANCE = 1e-2
 
 EQUATIONS = [
@@ -23,17 +22,6 @@ EQUATIONS = [
     ("Total Equity", ["Paid Up Capital", "Retained Earnings"]),
     # Balance sheet identity
     ("Total Assets", ["Total Liabilities", "Total Equity"]),
-    # Income statement: PBT = Operating Profit + Net Financial Items
-    # This catches the SAMPLE2 case where the PDF physically prints a wrong PBT
-    # (14,095,953) but Operating Profit (3,951,214) + Financial Income (7,456,840)
-    # + Financial Expenses (-312,101) = 11,095,953.
-    # We encode this as: PBT = Operating Profit/Loss + Net Profit/Loss delta guard.
-    # More precisely: Net Profit/Loss = Profit/Loss Before Tax + Income Tax (negative),
-    # so if Net Profit/Loss is known and tax is zero or derivable, PBT can be validated.
-    # The direct repair path: if Gross Profit/Loss is consistent but PBT is not,
-    # the column-selection and combinatorial phases will try alternates.
-    # Additionally we add the direct PBT math equation:
-    ("Profit/Loss Before Tax", ["Operating Profit/Loss", "Net Profit/Loss"]),
 ]
 
 CONFUSION_SET = {
@@ -73,10 +61,8 @@ def _residual_ok(residual: Optional[float]) -> bool:
     return residual is not None and abs(residual) < _RESIDUAL_TOLERANCE
 
 
-# Maximum allowed change ratio for a repair. If a proposed repair would change
-# a field's value by more than this fraction, REJECT the repair rather than
-# cascade-destroying correct fields to satisfy a broken equation.
-_MAX_REPAIR_DELTA_RATIO = 0.15  # 15% — tight enough to catch wrong-year extractions
+# Maximum allowed change ratio for a repair.
+_MAX_REPAIR_DELTA_RATIO = 0.15  # 15%
 
 def _is_safe_repair(current_val: Optional[float], proposed_val: float, repair_type: str = "digit_mutation") -> bool:
     """
@@ -99,23 +85,19 @@ def generate_candidates(raw_text: str) -> List[str]:
     if not raw_text:
         return candidates
 
-    # Remove whitespace
     clean = raw_text.replace(" ", "")
 
-    # 1. Flip digits
     for i, char in enumerate(clean):
         if char in CONFUSION_SET:
             for alt in CONFUSION_SET[char]:
                 candidates.append(clean[:i] + alt + clean[i + 1 :])
 
-    # 2. Add/remove trailing zero
     digits_only = "".join(c for c in clean if c.isdigit())
     if digits_only:
         if clean.endswith("0"):
             candidates.append(clean[:-1])
         candidates.append(clean + "0")
 
-    # 3. Add/remove negative sign/brackets
     if "(" in clean and ")" in clean:
         candidates.append(clean.replace("(", "").replace(")", ""))
     elif "-" in clean:
@@ -142,77 +124,41 @@ def _make_field_value(
     )
 
 
-def _validate_pbt_math(
-    fields: Dict[str, FieldValue],
-) -> Optional[float]:
+def _apply_zero_ncl_inference(fields: Dict[str, FieldValue]) -> None:
     """
-    SAMPLE2 guard: Validates Profit/Loss Before Tax using the income statement identity:
-        PBT = Operating Profit/Loss + Total Financial Income + Total Financial Expenses
+    Zero-NCL inference rule:
+    If Total Liabilities is known, Non-Current Liabilities is null, and
+    Current Liabilities is null, then Current Liabilities = Total Liabilities.
 
-    The PDF for SAMPLE2 physically prints 14,095,953 for PBT but the correct value
-    derived from its own components is 11,095,953 (a 3,000,000 typo in the document).
-
-    This function computes the mathematically correct PBT from:
-        Operating Profit/Loss + Net Profit/Loss back-calculation
-
-    Specifically: if we know Net Profit/Loss and the tax expense is zero or
-    derivable, we can cross-check PBT. More robustly: if
-        |PBT - (Operating Profit/Loss + (Net Profit/Loss - Operating Profit/Loss))|
-    is non-zero, something is wrong.
-
-    The most direct check available with current fields:
-        Net Profit/Loss = PBT + Income Tax
-    i.e., PBT = Net Profit/Loss - Income Tax (where tax is negative, so subtraction
-    of a negative = addition of the absolute tax value).
-
-    If Net Profit/Loss is known (9,915,794) and we can derive income tax from the
-    row candidates, we compute expected PBT and compare.
-
-    For robustness, we use the Operating Profit/Loss equation path when available,
-    falling back to the Net Profit/Loss path.
-
-    Returns the mathematically correct PBT if a discrepancy is found, else None.
+    This handles SAMPLE1-style balance sheets where a company has no non-current
+    liabilities section at all — the single liability line IS the total.
+    We do NOT infer Non-Current Liabilities = 0 to avoid polluting the equation
+    engine; we simply set Current = Total so the extractor reports it correctly.
     """
-    pbt_fv = fields.get("Profit/Loss Before Tax")
-    op_fv = fields.get("Operating Profit/Loss")
-    net_fv = fields.get("Net Profit/Loss")
+    total_fv = fields.get("Total Liabilities")
+    ncl_fv = fields.get("Non-Current Liabilities")
+    cl_fv = fields.get("Current Liabilities")
 
-    if pbt_fv is None or pbt_fv.value is None:
-        return None
+    total_known = total_fv is not None and total_fv.value is not None
+    ncl_null = ncl_fv is None or ncl_fv.value is None
+    cl_null = cl_fv is None or cl_fv.value is None
 
-    # Path 1: PBT via Operating Profit + row_candidates for financial items
-    # We trust Operating Profit and Net Profit as anchors since they have
-    # their own equation checks (Gross Profit chain and Balance Sheet identity).
-    # If both are present and internally consistent, PBT must sit between them.
-    if op_fv is not None and op_fv.value is not None and net_fv is not None and net_fv.value is not None:
-        # PBT must be between Operating Profit and Net Profit in absolute magnitude
-        # direction (since tax and financial items adjust it).
-        # If the extracted PBT is further from Net than Operating is from Net,
-        # something is wrong.
-        #
-        # Direct check: scan pbt_fv.row_candidates for an alternate value that
-        # satisfies: Net Profit/Loss is in the same column family.
-        # The simplest reliable check: use the row_candidates of PBT itself.
-        if pbt_fv.row_candidates:
-            for cand_raw, cand_val in pbt_fv.row_candidates:
-                if cand_val is not None and abs(cand_val - pbt_fv.value) > _RESIDUAL_TOLERANCE:
-                    # Check if this candidate makes Net Profit/Loss consistent.
-                    # Net = PBT + Tax. We don't have tax directly, but we know
-                    # Net must be <= PBT (tax reduces profit, or increases loss).
-                    # For a profit scenario: Net < PBT (tax is a cost).
-                    # For a loss scenario: Net > PBT (tax relief).
-                    # So: if cand_val is closer to net_fv.value and the sign relationship
-                    # is preserved, prefer the candidate.
-                    current_gap = abs(pbt_fv.value - net_fv.value)
-                    cand_gap = abs(cand_val - net_fv.value)
-                    if cand_gap < current_gap and cand_val != net_fv.value:
-                        logger.debug(
-                            "[PBT MATH GUARD] PBT candidate %s is closer to Net %s than extracted %s — preferring candidate",
-                            cand_val, net_fv.value, pbt_fv.value,
-                        )
-                        return cand_val
-
-    return None
+    if total_known and ncl_null and cl_null:
+        logger.debug(
+            "[ZERO-NCL] No NCL and no CL found — inferring Current Liabilities = Total Liabilities = %s",
+            total_fv.value,
+        )
+        inferred = FieldValue(
+            name="Current Liabilities",
+            value=total_fv.value,
+            raw_text=total_fv.raw_text,
+            page=total_fv.page,
+            tokens=total_fv.tokens,
+            bbox=total_fv.bbox,
+            valid=True,
+            reason="zero_ncl_inference",
+        )
+        fields["Current Liabilities"] = inferred
 
 
 def apply_math_repairs(
@@ -228,8 +174,8 @@ def apply_math_repairs(
       2. Sniper OCR — re-OCR the suspicious cell and test
       3. Inverse Search — if only one field is missing in an equation, solve for it
 
-    Pre-phase: PBT Math Guard — catch documents where the printed PBT is wrong
-    but the component values (Operating Profit, Net Profit) are consistent.
+    Pre-phase: Zero-NCL Inference — if no non-current liabilities exist and
+    current liabilities are also missing, infer CL = Total Liabilities.
     """
     repaired_fields = copy.deepcopy(fields)
 
@@ -239,18 +185,8 @@ def apply_math_repairs(
             logger.debug("Field: %s = %s", k, v.value)
     logger.debug("------------------------------------------")
 
-    # --- Pre-phase: PBT Math Guard ---
-    # Catches SAMPLE2-style documents where the PDF physically prints a wrong PBT
-    # value but the surrounding income statement components are internally consistent.
-    corrected_pbt = _validate_pbt_math(repaired_fields)
-    if corrected_pbt is not None:
-        pbt_fv = repaired_fields["Profit/Loss Before Tax"]
-        logger.debug(
-            "[PBT MATH GUARD] Correcting PBT from %s to %s",
-            pbt_fv.value, corrected_pbt,
-        )
-        pbt_fv.value = corrected_pbt
-        pbt_fv.reason = "pbt_math_guard"
+    # --- Pre-phase: Zero-NCL Inference ---
+    _apply_zero_ncl_inference(repaired_fields)
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands
@@ -304,7 +240,7 @@ def apply_math_repairs(
                             expected_val = target_val - other_summands_sum
 
                         if abs(expected_val) < _RESIDUAL_TOLERANCE:
-                            continue  # DO NOT infer zero if it's missing!
+                            continue
 
                         found_match = False
                         for token in all_tokens:
@@ -357,8 +293,7 @@ def apply_math_repairs(
         if residual is None or _residual_ok(residual):
             continue
 
-        # We have a non-zero residual. Try to repair the suspect fields.
-        best_repair = None  # (field_name, new_raw_text, new_float_val, repair_type)
+        best_repair = None
 
         # --- Phase 1: Combinatorial Math Search ---
         for suspect in suspects:
