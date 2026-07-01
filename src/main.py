@@ -95,17 +95,31 @@ def process_file(
         flat_config=flat_config,
     )
 
+    # The repair engine replaces some FieldValues via _make_field_value,
+    # which drops multi_year. Restore it from the pre-repair fields dict.
+    for field_name in repaired:
+        fv = repaired[field_name]
+        if fv is not None and fv.multi_year is None and field_name in fields:
+            old = fields[field_name]
+            if old is not None and old.multi_year is not None:
+                fv.multi_year = old.multi_year
+
     # Propagate repaired primary values into multi_year entries so the
     # years dict reflects corrections (e.g., PBT = NP + ITE repairs).
     for fv in repaired.values():
-        if fv is not None and fv.multi_year and fv.page is not None:
-            max_yr = max(fv.multi_year.keys())
-            my_fv = fv.multi_year[max_yr]
-            if my_fv is not None and my_fv.value != fv.value:
-                my_fv.value = fv.value
-                my_fv.raw_text = fv.raw_text
-                my_fv.tokens = fv.tokens
-                my_fv.bbox = fv.bbox
+        if fv is None or not fv.multi_year or fv.page is None:
+            continue
+        yr_keys = [k for k in fv.multi_year if isinstance(k, int)]
+        if not yr_keys:
+            continue
+        max_yr = max(yr_keys)
+        my_fv = fv.multi_year[max_yr]
+        if my_fv is not None and my_fv.value != fv.value:
+            my_fv.value = fv.value
+            my_fv.raw_text = fv.raw_text
+            my_fv.tokens = fv.tokens
+            my_fv.bbox = fv.bbox
+            my_fv.confidence = fv.confidence
 
     validated = validate_fields(repaired)
 
