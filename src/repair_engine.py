@@ -161,8 +161,7 @@ def _apply_zero_ncl_inference(fields: Dict[str, FieldValue]) -> None:
 
     Handles documents (e.g. early-stage companies) where there are no
     non-current liabilities at all — the single liabilities line IS the total.
-    This rule is suppressed in optimization_mode where inverse_search can
-    derive CL from TL - NCL once NCL is extracted via keyword matching.
+    Fires unconditionally. The function itself is a no-op if NCL already has a value.
     """
     tl = fields.get("Total Liabilities")
     ncl = fields.get("Non-Current Liabilities")
@@ -203,8 +202,7 @@ def apply_math_repairs(
 
     Phase 0A — Null-CoS-without-GP: prevent false CoS when no GP line exists.
     Phase 0B — Zero-NCL inference: CL = TL when NCL is structurally absent.
-               Suppressed in optimization_mode so inverse_search can solve
-               CL = TL - NCL after NCL is extracted via keyword matching.
+               Fires unconditionally. The function itself is a no-op if NCL already has a value.
     Phase 1  — Digit mutation: flip one OCR-confused character per field.
     Phase 1.5 — Column selection: try alternate column values from the row.
     Phase 2  — Sniper OCR: re-OCR the suspicious bounding box.
@@ -223,9 +221,8 @@ def apply_math_repairs(
     # Phase 0A
     _apply_null_cos_without_gp(repaired)
 
-    # Phase 0B — only in non-optimization mode
-    if not optimization_mode:
-        _apply_zero_ncl_inference(repaired)
+    # Phase 0B — zero-NCL inference
+    _apply_zero_ncl_inference(repaired)
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands
@@ -290,7 +287,49 @@ def apply_math_repairs(
                                 logger.debug("  [INV] %s = %s", m, cv)
                                 break
                         else:
-                            continue
+                            # Phase 3 continuation: split-token merge pass
+                            # Handles values OCR split into adjacent tokens (e.g. "1180" + "159" → 1180159)
+                            if m not in repaired or repaired[m].value is None:
+                                # Build a sorted list of tokens for merge scanning
+                                sorted_tokens = sorted(all_tokens, key=lambda t: (t.page, t.bbox[1], t.bbox[0]))
+                                for i in range(len(sorted_tokens) - 1):
+                                    ta = sorted_tokens[i]
+                                    tb = sorted_tokens[i + 1]
+                                    # Must be same page, vertically aligned, small horizontal gap
+                                    if ta.page != tb.page:
+                                        continue
+                                    y_overlap = abs(ta.bbox[1] - tb.bbox[1])
+                                    x_gap = tb.bbox[0] - ta.bbox[2]
+                                    if y_overlap > 15 or x_gap < 0 or x_gap > 60:
+                                        continue
+                                    merged_text = ta.text + tb.text
+                                    cv = parse_numeric(merged_text)
+                                    if cv is None:
+                                        continue
+                                    if abs(cv - expected) < 0.5:
+                                        merged_token = Token(
+                                            text=merged_text,
+                                            bbox=(ta.bbox[0], ta.bbox[1], tb.bbox[2], tb.bbox[3]),
+                                            page=ta.page,
+                                            confidence=min(ta.confidence, tb.confidence),
+                                        )
+                                        if m in repaired:
+                                            repaired[m].value = cv
+                                            repaired[m].raw_text = merged_text
+                                            repaired[m].page = merged_token.page
+                                            repaired[m].bbox = merged_token.bbox
+                                            repaired[m].reason = "inverse_search_merged"
+                                            repaired[m].confidence = CONFIDENCE_MEDIUM
+                                            repaired[m].tokens = [merged_token]
+                                        else:
+                                            repaired[m] = _make_field_value(
+                                                m, cv, merged_text, merged_token,
+                                                "inverse_search_merged", CONFIDENCE_MEDIUM,
+                                            )
+                                        logger.debug("  [INV-MERGE] %s = %s (from '%s'+'%s')", m, cv, ta.text, tb.text)
+                                        break
+                                else:
+                                    continue
                         break
 
         # Recompute after inverse search
