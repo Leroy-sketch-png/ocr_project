@@ -24,7 +24,7 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
         page = f.page or 0
 
     base = {
-        "field_label": f.field_label,
+        "field_label": f.name if f.name else f.field_label,
         "value": f.value,
         "confidence": getattr(f, "confidence", "high"),
         "raw_text": f.raw_text,
@@ -39,7 +39,7 @@ def field_value_to_dict(f: FieldValue) -> Dict[str, Any]:
     if getattr(f, "multi_year", None):
         base["years"] = {
             str(yr): {
-                "field_label": yfv.field_label,
+                "field_label": yfv.name if yfv.name else yfv.field_label,
                 "value": yfv.value,
                 "raw_text": yfv.raw_text,
                 "confidence": getattr(yfv, "confidence", "high"),

@@ -538,7 +538,7 @@ def extract_fields(
                 valid=True,
                 reason=None,
                 row_candidates=[],
-                field_label=matched_row.description,
+                field_label=field_name,
                 year=yr,
             )
             year_values[yr] = year_fv

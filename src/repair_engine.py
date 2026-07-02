@@ -174,7 +174,7 @@ def _make_field_value(
         valid=True,
         reason=reason,
         confidence=confidence,
-        field_label=field_label,
+        field_label=field_label or name,
     )
 
 

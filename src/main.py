@@ -104,12 +104,64 @@ def process_file(
             if old is not None and old.multi_year is not None:
                 fv.multi_year = old.multi_year
 
+    # Inverse-search-inferred fields get a new primary value but may retain
+    # stale multi_year from pre-repair. Clear it so the equation computation
+    # below can build correct multi_year for all years (e.g. ITE from PBT - NP).
+    for fv in repaired.values():
+        if fv is not None and fv.multi_year is not None:
+            reason = getattr(fv, "reason", None) or ""
+            if "inverse_search" in reason:
+                fv.multi_year = None
+
+    # For inferred fields that still lack multi_year, compute it from
+    # their accounting equation if all summands have year data.
+    from .repair_engine import EQUATIONS
+    from copy import deepcopy
+
+    def _compute_multi_year(target, summands, repaired, field_to_compute):
+        """Populate multi_year for field_to_compute using equation."""
+        fv = repaired.get(field_to_compute)
+        if fv is None or fv.multi_year is not None:
+            return
+        # Gather all equation participants and their multi_year
+        all_participants = [target] + summands
+        source_years = {}
+        for p in all_participants:
+            pfv = repaired.get(p)
+            if pfv is not None and pfv.multi_year is not None:
+                source_years[p] = {y: pfv.multi_year[y].value for y in pfv.multi_year if y is not None}
+        # Need all participants except the one being computed
+        needed = {p for p in all_participants if p != field_to_compute}
+        if not needed.issubset(source_years.keys()):
+            return
+        common_years = set.intersection(*[set(source_years[p].keys()) for p in needed]) if needed else set()
+        if not common_years:
+            return
+        yr_map = {}
+        for yr in sorted(common_years):
+            other_sum = sum(source_years[p].get(yr, 0) for p in needed)
+            if field_to_compute == target:
+                yr_val = other_sum
+            else:
+                yr_val = source_years[target][yr] - sum(source_years[p].get(yr, 0) for p in needed if p != target)
+            yr_fv = deepcopy(fv)
+            yr_fv.value = yr_val
+            yr_fv.year = yr
+            yr_fv.multi_year = None
+            yr_map[yr] = yr_fv
+        fv.multi_year = yr_map
+
+    for target, summands in EQUATIONS:
+        _compute_multi_year(target, summands, repaired, target)
+        for s in summands:
+            _compute_multi_year(target, summands, repaired, s)
+
     # Propagate repaired primary values into multi_year entries so the
     # years dict reflects corrections (e.g., PBT = NP + ITE repairs).
     for fv in repaired.values():
         if fv is None or not fv.multi_year or fv.page is None:
             continue
-        yr_keys = [k for k in fv.multi_year if isinstance(k, int)]
+        yr_keys = [k for k in fv.multi_year if k is not None]
         if not yr_keys:
             continue
         max_yr = max(yr_keys)
