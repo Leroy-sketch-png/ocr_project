@@ -151,6 +151,20 @@ Equity:
   _section: balance_sheet
   Paid Up Capital:
     keywords: ["Paid Up Capital", "Share Capital", "Issued capital", "Ordinary shares", "Common stock and additional paid-in capital", "Common stock", "Share capital and additional paid-in capital", "Called up share capital"]
+  Other Reserves:
+    inferred: true
+    keywords:
+      - "Other reserves"
+      - "Other reserve"
+      - "Reserve"
+      - "Reserves"
+      - "Share premium"
+      - "Revaluation"
+      - "Statutory reserve"
+      - "Other components of equity"
+      - "Capital reserve"
+      - "Premium reserve"
+      - "Share premium reserve"
   Retained Earnings:
     keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)", "Other equity", "Accumulated deficit", "Retained earnings/(deficit)"]
   Total Equity:

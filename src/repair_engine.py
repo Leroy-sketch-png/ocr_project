@@ -30,7 +30,7 @@ EQUATIONS = [
     ("Current Assets",           ["Cash and Cash Equivalents", "Trade Receivables"]),
     ("Total Assets",             ["Current Assets", "Non-Current Assets"]),
     ("Total Liabilities",        ["Current Liabilities", "Non-Current Liabilities"]),
-    ("Total Equity",             ["Paid Up Capital", "Retained Earnings"]),
+    ("Total Equity",             ["Paid Up Capital", "Retained Earnings", "Other Reserves"]),
     ("Total Assets",             ["Total Liabilities", "Total Equity"]),
     ("Profit/Loss Before Tax",   ["Net Profit/Loss", "Income Tax Expense"]),
 ]

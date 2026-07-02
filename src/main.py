@@ -121,8 +121,14 @@ def process_file(
     def _compute_multi_year(target, summands, repaired, field_to_compute):
         """Populate multi_year for field_to_compute using equation."""
         fv = repaired.get(field_to_compute)
-        if fv is None or fv.multi_year is not None:
+        if fv is None:
             return
+        if fv.multi_year is not None:
+            # For inferred fields (e.g. Other Reserves), always recompute
+            # from equation; OCR values may be noisy.
+            fc = flat_config.get(field_to_compute, {})
+            if not fc.get("inferred"):
+                return
         # Gather all equation participants and their multi_year
         all_participants = [target] + summands
         source_years = {}
