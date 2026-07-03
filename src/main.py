@@ -12,6 +12,7 @@ from .models import CONFIDENCE_HIGH
 from .ocr_engine import get_ocr_engine
 from .repair_engine import apply_math_repairs
 from .table_builder import build_table_rows, build_text_blocks, detect_page_sections
+from .text_extractor import extract_tokens_from_pdf, has_extractable_text
 from .validator import validate_fields
 from .value_parser import parse_numeric
 
@@ -28,21 +29,27 @@ def process_file(
     """Process a single PDF/image file and return extracted fields."""
     config = load_field_config(config_path)
 
-    doc = load_document(pdf_path)
-    engine = get_ocr_engine("tesseract")
-
     all_tokens = []
     processed_images = {}
     dpi_scale = 1.0
 
-    # Cache preprocessed page images once per page to avoid double-processing
-    for page_idx, (page_num, page_image, page_dpi_scale) in enumerate(doc.pages):
-        processed = preprocess_image(page_image)
-        processed_images[page_num] = processed
-        tokens = engine.recognize_page(processed, page_num)
-        all_tokens.extend(tokens)
-        if page_num == 1:
-            dpi_scale = page_dpi_scale
+    # Fast path: text-based PDF → extract tokens via pdfplumber (no OCR).
+    # Falls back to Tesseract OCR for scanned/image-based PDFs.
+    if has_extractable_text(pdf_path):
+        all_tokens = extract_tokens_from_pdf(pdf_path)
+        # dpi_scale = 1.0: coordinates already scaled to 300 DPI pixel space
+        # in text_extractor.py via _PDF_PT_TO_PX multiplier
+    else:
+        doc = load_document(pdf_path)
+        engine = get_ocr_engine("tesseract")
+
+        for page_idx, (page_num, page_image, page_dpi_scale) in enumerate(doc.pages):
+            processed = preprocess_image(page_image)
+            processed_images[page_num] = processed
+            tokens = engine.recognize_page(processed, page_num)
+            all_tokens.extend(tokens)
+            if page_num == 1:
+                dpi_scale = page_dpi_scale
 
     text_blocks = build_text_blocks(all_tokens)
     table_rows = build_table_rows(text_blocks, dpi_scale=dpi_scale)
@@ -50,7 +57,9 @@ def process_file(
     page_section_map = detect_page_sections(table_rows, text_blocks)
 
     # detect_year_column now returns three values
-    year_x_map, full_year_map, col_pitch_map = detect_year_column(table_rows)
+    year_x_map, full_year_map, col_pitch_map = detect_year_column(
+        table_rows, page_section_map=page_section_map
+    )
 
     fields = extract_fields(
         table_rows,
@@ -154,6 +163,9 @@ def process_file(
             yr_fv.value = yr_val
             yr_fv.year = yr
             yr_fv.multi_year = None
+            yr_fv.raw_text = None
+            yr_fv.tokens = []
+            yr_fv.bbox = None
             yr_map[yr] = yr_fv
         fv.multi_year = yr_map
 
@@ -172,7 +184,7 @@ def process_file(
             continue
         max_yr = max(yr_keys)
         my_fv = fv.multi_year[max_yr]
-        if my_fv is not None and my_fv.value != fv.value:
+        if my_fv is not None and fv.value is not None and my_fv.value != fv.value:
             my_fv.value = fv.value
             my_fv.raw_text = fv.raw_text
             my_fv.tokens = fv.tokens
@@ -189,7 +201,7 @@ def main():
     parser.add_argument("pdf", help="Path to the PDF file")
     parser.add_argument("--config", default=str(_DEFAULT_CONFIG), help="Field config YAML")
     parser.add_argument("--output", help="Write JSON output to this file instead of stdout")
-    parser.add_argument("--optimize", action="store_true", help="Enable optimization mode")
+    parser.add_argument("--optimize", action="store_true", default=True, help="Enable optimization mode")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 

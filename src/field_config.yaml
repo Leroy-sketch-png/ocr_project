@@ -1,7 +1,7 @@
 ProfitAndLoss:
   _section: income_statement
   Revenue:
-    keywords: ["Revenue", "Turnover", "Sales", "Total revenue", "Net revenue", "Total net sales", "Net sales"]
+    keywords: ["Revenue", "Turnover", "Sales", "Total revenue", "Net revenue", "Total net sales", "Net sales", "Net operating revenues", "Operating revenues", "Sales, net"]
   Gross Profit/Loss:
     keywords: ["Gross Profit", "Gross Loss", "Gross Profit/Loss", "Gross profit / (loss)", "Gross margin"]
   Profit/Loss Before Tax:
@@ -69,13 +69,15 @@ ProfitAndLoss:
       - "Income tax expenses"
       - "Tax on result"
       - "Tax expense"
+      - "Provision for income taxes"
+      - "Income tax provision"
 
 Assets:
   _section: balance_sheet
   Cash and Cash Equivalents:
     keywords: ["Cash and Cash Equivalents", "Cash & Cash Equivalents", "Bank deposits, cash in hand", "Bank deposits", "Cash and bank balances"]
   Current Assets:
-    keywords: ["Current Assets", "Total Current Assets", "Total current asset"]
+    keywords: ["Current Assets", "Total Current Assets", "Total current asset", "Total current assets"]
   Non-Current Assets:
     keywords: ["Non-Current Assets", "Noncurrent Assets", "Total fixed assets", "Total Non-Current Assets", "Total non-current asset"]
   Plant and Equipment:
@@ -142,10 +144,14 @@ Liabilities:
       - "Long-term borrowings"
       - "Finance lease liabilities"
       - "Borrowings"
+      - "Long-term debt"
+      - "Deferred income taxes"
+      - "Other noncurrent liabilities"
+      - "Total non-current liabilities"
       # NOTE: 'Borrowings' is a single-item NCL section label (e.g. IFRS balance sheets).
       # The page_section_map guards against matching CL-section Borrowings rows.
   Total Liabilities:
-    keywords: ["Total Liabilities", "Total ilities"]
+    keywords: ["Total Liabilities", "Total ilities", "Total liabilities"]
 
 Equity:
   _section: balance_sheet
@@ -168,7 +174,7 @@ Equity:
   Retained Earnings:
     keywords: ["Retained Earnings", "Accumulated Profits", "Accumulated Losses", "Retained profits", "Retained profit / (loss)", "Other equity", "Accumulated deficit", "Retained earnings/(deficit)"]
   Total Equity:
-    keywords: ["Total Equity", "Total Shareholders' Equity", "Total equity", "Equity attributable to owners", "Equity attributable to owner"]
+    keywords: ["Total Equity", "Total Shareholders' Equity", "Total equity", "Equity attributable to owners", "Equity attributable to owner", "Total stockholders' equity", "Total shareholders equity"]
 
 Auditor:
   Auditor's Opinion:

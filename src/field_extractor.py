@@ -17,9 +17,9 @@ def compute_match_score(query: str, desc: str) -> float:
     - Partial overlap: scaled score, small extra-word penalty.
     - No overlap: fall back to fuzzy ratio.
 
-    The key change from the old version: when query tokens are fully contained
-    in desc tokens (containment match), we do NOT penalise the extra description
-    words. This handles "Trade and other receivables" matching "Trade Receivables".
+    Restricting modifiers (current, noncurrent, fixed, intangible, short-term,
+    long-term) that break the semantic meaning of a containment match are
+    penalised to prevent "Total Assets" from matching "Total current assets".
     """
     q_clean = re.sub(r"[^a-z0-9\s]", "", query.lower())
     d_clean = re.sub(r"[^a-z0-9\s]", "", desc.lower())
@@ -27,8 +27,7 @@ def compute_match_score(query: str, desc: str) -> float:
     q_tokens = set(q_clean.split())
     d_tokens = set(d_clean.split())
 
-    # Remove grammatical stop words that add noise.
-    # CRITICAL: Do NOT remove 'net', 'total', 'other' as they are semantically vital in finance.
+    # Grammatical stop words — semantically neutral.
     _STOPS = {"and", "or", "the", "of", "for", "in"}
     q_tokens -= _STOPS
     d_tokens -= _STOPS
@@ -40,21 +39,34 @@ def compute_match_score(query: str, desc: str) -> float:
     if not intersection:
         return fuzz.ratio(q_clean, d_clean)
 
-    recall = len(intersection) / len(q_tokens)  # how much of query is covered
-    extra_words = len(d_tokens) - len(intersection)  # words in desc not in query
+    recall = len(intersection) / len(q_tokens)
+    extra_desc_tokens = d_tokens - q_tokens
+
+    # Restricting modifiers that change which line item is referenced
+    # (e.g., "current" in "Total current assets" ≠ "Total Assets").
+    # "equity" and "liabilities" prevent "Total Liabilities" from matching
+    # "Total liabilities and equity" (a different line).
+    _RESTRICTING = {
+        "current", "noncurrent", "fixed", "intangible",
+        "shortterm", "longterm",
+        "equity", "liabilities",
+    }
 
     if recall == 1.0:
-        # All query tokens are present in description — containment match.
-        # Do NOT penalise extra words: "Trade and other receivables" should
-        # score as well as "Trade receivables" for the query "trade receivables".
+        # All query tokens present in description — containment match.
+        # Penalise if desc contains restricting modifiers that break the
+        # semantic meaning (e.g., "Total current assets" for "Total Assets").
+        has_restricting = bool(extra_desc_tokens & _RESTRICTING)
+        if has_restricting:
+            return 45.0  # below 82 threshold regardless of fuzzy similarity
         base = 95.0
-        # Small penalty only if description is 3x longer than query (very different)
-        if extra_words > len(q_tokens) * 2:
+        # Small penalty only if description is very long
+        if len(extra_desc_tokens) > len(q_tokens) * 2:
             base -= 5.0
         return max(base, fuzz.ratio(q_clean, d_clean))
     elif recall >= 0.5:
-        # Partial overlap — keep a small extra-word penalty but don't kill the score
-        score = (recall * 90) - (extra_words * 5)
+        # Partial overlap — keep a small extra-word penalty
+        score = (recall * 90) - (len(extra_desc_tokens) * 5)
         return max(score, fuzz.ratio(q_clean, d_clean))
 
     return fuzz.ratio(q_clean, d_clean)
@@ -147,9 +159,15 @@ def _cross_field_collision_check(results: dict) -> dict:
 
 def detect_year_column(
     table_rows: List[TableRow],
+    page_section_map: Optional[Dict[int, str]] = None,
 ) -> Tuple[Dict[int, float], Dict[int, Dict[int, float]], Dict[int, float]]:
     """
     Detect the most-recent-year column X position per page.
+
+    Only pages whose section marker is explicitly non-financial ("notes")
+    skip primary year detection — they inherit years via forward/backward
+    fill.  "Unknown" pages are not skipped because they may be financial
+    statements the section detector failed to identify.
 
     Returns:
       primary_map:    {page: x_coord_of_most_recent_year}
@@ -168,31 +186,64 @@ def detect_year_column(
 
     pages = sorted(list(set(row.page for row in table_rows)))
 
+    # Pages whose section marker is definitely non-financial (notes)
+    # should not contribute year detections.  "Unknown" pages are
+    # likely financial statements the section detector missed.
+    _SKIP_SECTIONS = {"notes"}
+
     for page in pages:
+        skip_page = (
+            page_section_map is not None
+            and page_section_map.get(page) in _SKIP_SECTIONS
+        )
+
         page_rows = [r for r in table_rows if r.page == page]
 
-        # Aggregate year cells in the top 10 rows
+        # Aggregate year cells in the top 10 rows.
         year_cells = []
-        for row in page_rows[:10]:
-            for cell_text, tokens in zip(row.cells, row.cell_tokens):
-                clean = cell_text.replace(",", "").replace(" ", "").strip()
-                if clean.isdigit() and 1990 <= int(clean) <= 2030 and tokens:
-                    min_x = min(t.bbox[0] for t in tokens)
-                    max_x = max(t.bbox[2] for t in tokens)
-                    center_x = (min_x + max_x) / 2.0
-                    year_cells.append((center_x, int(clean)))
+        if not skip_page:
+            for row in page_rows[:10]:
+                for cell_text, tokens in zip(row.cells, row.cell_tokens):
+                    # Accept a cell as a year header if the text, after
+                    # stripping leading/trailing whitespace and trailing
+                    # punctuation (commas, periods, brackets), is a pure
+                    # digit string in 1990–2030.  Financial values with
+                    # thousands-separator commas (e.g. "2,009") will still
+                    # have the internal comma after rstrip → isdigit() is
+                    # False → correctly rejected.
+                    stripped = cell_text.strip().rstrip(",.)}]")
+                    if stripped.isdigit() and 1990 <= int(stripped) <= 2030 and tokens:
+                        min_x = min(t.bbox[0] for t in tokens)
+                        max_x = max(t.bbox[2] for t in tokens)
+                        center_x = (min_x + max_x) / 2.0
+                        year_cells.append((center_x, int(stripped)))
 
         unique_years = {y[1]: y[0] for y in year_cells}
-        if len(unique_years) >= 2:
-            target_x = unique_years[max(unique_years.keys())]
+
+        # Deduplicate by X coordinate: if multiple year-like values share the
+        # same column X (e.g. a "2007" data value aligned under the "2024"
+        # header), keep only the most recent year for that column.
+        # Tolerance of 20px accounts for header-centering vs data-right-alignment.
+        _X_TOLERANCE = 20.0
+        x_yr = {}  # center_x → best_year
+        for yr, cx in unique_years.items():
+            match_x = next((ex for ex in x_yr if abs(cx - ex) < _X_TOLERANCE), None)
+            if match_x is not None:
+                if yr > x_yr[match_x]:
+                    x_yr[match_x] = yr
+            else:
+                x_yr[cx] = yr
+        unique_years_rebuilt = {yr: cx for cx, yr in x_yr.items()}
+
+        if len(unique_years_rebuilt) >= 2:
+            target_x = unique_years_rebuilt[max(unique_years_rebuilt.keys())]
             page_year_x[page] = target_x
-            full_year_map[page] = dict(unique_years)
+            full_year_map[page] = dict(unique_years_rebuilt)
             last_seen_x = target_x
-            last_seen_full = dict(unique_years)
+            last_seen_full = dict(unique_years_rebuilt)
 
             # Compute tightest gap between adjacent year column centres.
-            # This is the true column pitch for this page layout.
-            xs = sorted(unique_years.values())
+            xs = sorted(unique_years_rebuilt.values())
             gaps = [xs[i + 1] - xs[i] for i in range(len(xs) - 1)]
             pitch = min(gaps) if gaps else None
             col_pitch_map[page] = pitch
@@ -407,6 +458,43 @@ def extract_fields(
                         field_label=row.description,
                     )
 
+    def _clear_field_value(fv):
+        """Clear a field's extracted data so it can be recomputed from equation.
+        Preserves page for equation computation. Resets field_label to canonical
+        name so multi-year row matching doesn't re-find the wrong row."""
+        if fv is None:
+            return
+        fv.value = None
+        fv.raw_text = None
+        fv.tokens = []
+        fv.bbox = None
+        fv.valid = False
+        fv.reason = None
+        fv.row_candidates = []
+        fv.multi_year = None
+        fv.field_label = fv.name
+
+    # Resolve bbox conflicts: if multiple fields claim the same bbox,
+    # keep only the highest-scoring match. The loser's value is cleared
+    # (set to None) so it can be recomputed from its accounting equation
+    # via the inverse search or multi-year propagation in main.py.
+    bbox_owners = {}  # tuple(bbox, page) -> (field_name, score)
+    for fn in list(results.keys()):
+        fv = results[fn]
+        if fv is None or fv.bbox is None:
+            continue
+        key = (tuple(fv.bbox), fv.page)
+        if key in bbox_owners:
+            existing_fn, existing_score = bbox_owners[key]
+            current_score = best_scores.get(fn, 0)
+            if current_score > existing_score:
+                _clear_field_value(results[existing_fn])
+                bbox_owners[key] = (fn, current_score)
+            else:
+                _clear_field_value(results[fn])
+        else:
+            bbox_owners[key] = (fn, best_scores.get(fn, 0))
+
     # -----------------------------------------------------------------------
     # Auditor's Opinion — handled via full text-block scan, not table rows
     # -----------------------------------------------------------------------
@@ -495,8 +583,9 @@ def extract_fields(
                 break
 
         if matched_row is None:
-            primary_year = max(years_on_page.keys())
-            multi_year_results[field_name] = {primary_year: primary_fv}
+            if primary_fv.value is not None:
+                primary_year = max(years_on_page.keys())
+                multi_year_results[field_name] = {primary_year: primary_fv}
             continue
 
         year_values = {}
