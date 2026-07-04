@@ -1,12 +1,14 @@
 """Cross-check all accounting identities for all samples."""
-import sys, json
-sys.path.insert(0, r"C:\Users\c-leroy.phan\Downloads\ai\ocr_project")
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.main import process_file
 
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 SAMPLES = {
-    "S1": r"C:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE1.pdf",
-    "S2": r"C:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE2.pdf",
-    "S3": r"C:\Users\c-leroy.phan\Downloads\ai\AA_SAMPLE3.pdf",
+    "S1": str(PROJECT_DIR / "data" / "samples" / "AA_SAMPLE1.pdf"),
+    "S2": str(PROJECT_DIR / "data" / "samples" / "AA_SAMPLE2.pdf"),
+    "S3": str(PROJECT_DIR / "data" / "samples" / "AA_SAMPLE3.pdf"),
 }
 
 IDENTITIES = [
@@ -40,17 +42,17 @@ for label, path in SAMPLES.items():
                     print(f"  {target}[{yr}]: summand {s} missing")
                     missing = True
                     break
-                sv += abs(sv2) if s == "Income Tax Expense" else sv2
+                sv += sv2
             if missing:
                 continue
-            # For PBT = NP + |ITE|, use sign-aware check
+            # For PBT = NP + |ITE| (ITE is always an expense, use abs)
             if target == "Profit/Loss Before Tax":
                 sv = 0
                 for s in summands:
                     s_yrs = result.get(s, {}).get("years", {})
                     s_val = s_yrs.get(yr, {}).get("value", 0)
                     if s == "Income Tax Expense":
-                        s_val = -abs(s_val) if s_val < 0 else abs(s_val)
+                        s_val = abs(s_val)
                     sv += s_val
             diff = abs(tv - sv)
             ok = diff < 1.0

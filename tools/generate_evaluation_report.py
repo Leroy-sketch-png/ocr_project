@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
-WORKSPACE_DIR = PROJECT_DIR.parent
 TESTS_DIR = PROJECT_DIR / "tests"
 
 sys.path.append(str(PROJECT_DIR))
@@ -17,22 +16,22 @@ from src.main import process_file  # noqa: E402
 
 SAMPLES = [
     {
-        "name": "sample1",
+        "name": "SAMPLE1",
         "pdf": "AA_SAMPLE1.pdf",
-        "pdf_path": WORKSPACE_DIR / "AA_SAMPLE1.pdf",
-        "gt": TESTS_DIR / "hand_labeled_gt" / "sample1_gt.json",
+        "pdf_path": PROJECT_DIR / "data" / "samples" / "AA_SAMPLE1.pdf",
+        "gt": TESTS_DIR / "gt" / "SAMPLE1.json",
     },
     {
-        "name": "sample2",
+        "name": "SAMPLE2",
         "pdf": "AA_SAMPLE2.pdf",
-        "pdf_path": WORKSPACE_DIR / "AA_SAMPLE2.pdf",
-        "gt": TESTS_DIR / "hand_labeled_gt" / "sample2_gt.json",
+        "pdf_path": PROJECT_DIR / "data" / "samples" / "AA_SAMPLE2.pdf",
+        "gt": TESTS_DIR / "gt" / "SAMPLE2.json",
     },
     {
-        "name": "sample3",
+        "name": "SAMPLE3",
         "pdf": "AA_SAMPLE3.pdf",
-        "pdf_path": WORKSPACE_DIR / "AA_SAMPLE3.pdf",
-        "gt": TESTS_DIR / "hand_labeled_gt" / "sample3_gt.json",
+        "pdf_path": PROJECT_DIR / "data" / "samples" / "AA_SAMPLE3.pdf",
+        "gt": TESTS_DIR / "gt" / "SAMPLE3.json",
     },
 ]
 

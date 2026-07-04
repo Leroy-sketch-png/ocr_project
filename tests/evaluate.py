@@ -1,7 +1,7 @@
 """Evaluation script for the OCR extraction pipeline.
 
 Scoring rules:
-- Single-value GT (scalar): same as before, compare vs extraction primary value
+- Single-value GT (scalar): compare vs extraction primary value
 - Year-keyed GT (dict): compare each year's value vs extraction years dict
 - Null GT: field should be absent or primary value None
 
@@ -9,25 +9,25 @@ Numeric tolerance:
   abs(diff) <= 1.0  OR  rel(diff) <= 0.01%
 """
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-GROUND_TRUTH_PATH = Path("tests/ground_truth.json")
+GT_DIR = Path("tests/gt")
 SAMPLES = {
-    "SAMPLE1": Path("../AA_SAMPLE1.pdf"),
-    "SAMPLE2": Path("../AA_SAMPLE2.pdf"),
-    "SAMPLE3": Path("../AA_SAMPLE3.pdf"),
-    "KO": Path("../real_10ks/ko_10k.pdf"),
+    "SAMPLE1": Path("data/samples/AA_SAMPLE1.pdf"),
+    "SAMPLE2": Path("data/samples/AA_SAMPLE2.pdf"),
+    "SAMPLE3": Path("data/samples/AA_SAMPLE3.pdf"),
+    "KO": Path("data/real_10ks/ko_10k.pdf"),
 }
 _ABS_TOLERANCE = 1.0
 _REL_TOLERANCE = 1e-4
 
 
-def load_ground_truth() -> Dict[str, Any]:
-    with open(GROUND_TRUTH_PATH, encoding="utf-8") as f:
+def load_ground_truth(sample_name: str) -> Dict[str, Any]:
+    path = GT_DIR / f"{sample_name}.json"
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -61,7 +61,6 @@ def score_field(expected: Any, extracted: Any) -> int:
 
 
 def evaluate() -> None:
-    gt = load_ground_truth()
     total_correct = 0
     total_fields = 0
 
@@ -72,14 +71,13 @@ def evaluate() -> None:
 
         print(f"\n=== {sample_name} ===")
         extracted = run_pipeline(pdf_path)
-        sample_gt = gt.get(sample_name, {})
+        sample_gt = load_ground_truth(sample_name)
 
         for field_name, expected_val in sample_gt.items():
             raw_extracted = extracted.get(field_name)
             ext_years = (raw_extracted or {}).get("years", {})
 
             if isinstance(expected_val, dict):
-                # Year-keyed GT
                 for yr_str, year_expected in expected_val.items():
                     yr_key = str(yr_str)
                     year_extracted = None
@@ -97,16 +95,11 @@ def evaluate() -> None:
                             tag = " [FALSE POSITIVE]"
                         elif year_expected is not None and year_extracted is None:
                             tag = " [MISSING]"
-                        elif year_expected is None and year_extracted is None:
-                            tag = ""  # both None = correct, already scored 100 above
-                        else:
-                            tag = " [WRONG VALUE]"
                     print(
                         f"  {status} {field_name} [{yr_str}]: expected={year_expected} "
                         f"extracted={year_extracted}{tag}"
                     )
             else:
-                # Scalar GT (null, string, number) — check primary value
                 if isinstance(raw_extracted, dict):
                     extracted_val = raw_extracted.get("value")
                 else:

@@ -37,11 +37,10 @@ def extract_pdf_text_paddle(pdf_path: str):
 
 def main():
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    workspace_dir = os.path.dirname(project_dir)
     samples = [
-        os.path.join(workspace_dir, "AA_SAMPLE1.pdf"),
-        os.path.join(workspace_dir, "AA_SAMPLE2.pdf"),
-        os.path.join(workspace_dir, "AA_SAMPLE3.pdf"),
+        os.path.join(project_dir, "data", "samples", "AA_SAMPLE1.pdf"),
+        os.path.join(project_dir, "data", "samples", "AA_SAMPLE2.pdf"),
+        os.path.join(project_dir, "data", "samples", "AA_SAMPLE3.pdf"),
     ]
 
     for sample in samples:

@@ -1,0 +1,22 @@
+{
+  "Revenue": {"2023": 1782538.0},
+  "Cost of Sales": {"2023": -1463028.0},
+  "Gross Profit/Loss": {"2023": 319510.0},
+  "Operating Profit/Loss": null,
+  "Profit/Loss Before Tax": {"2022": -29198.0, "2023": 256484.0},
+  "Income Tax Expense": {"2022": -10434.0, "2023": 8400.0},
+  "Net Profit/Loss": {"2022": -39632.0, "2023": 248084.0},
+  "Cash and Cash Equivalents": {"2022": 972064.0, "2023": 1369838.0},
+  "Trade Receivables": {"2022": 113718.0, "2023": 74677.0},
+  "Current Assets": 1444515.0,
+  "Plant and Equipment": {"2022": 1.0, "2023": 1.0},
+  "Non-Current Assets": 5596.0,
+  "Total Assets": {"2022": 1086669.0, "2023": 1450111.0},
+  "Current Liabilities": 818988.0,
+  "Non-Current Liabilities": {"2023": 1463.0},
+  "Total Liabilities": {"2022": 705093.0, "2023": 820451.0},
+  "Paid Up Capital": {"2022": 72338.0, "2023": 72338.0},
+  "Retained Earnings": {"2022": 309238.0, "2023": 557322.0},
+  "Total Equity": {"2022": 381576.0, "2023": 629660.0},
+  "Auditor's Opinion": "Qualified"
+}
