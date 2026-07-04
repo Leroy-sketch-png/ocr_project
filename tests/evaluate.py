@@ -20,6 +20,7 @@ SAMPLES = {
     "SAMPLE1": Path("../AA_SAMPLE1.pdf"),
     "SAMPLE2": Path("../AA_SAMPLE2.pdf"),
     "SAMPLE3": Path("../AA_SAMPLE3.pdf"),
+    "KO": Path("../real_10ks/ko_10k.pdf"),
 }
 _ABS_TOLERANCE = 1.0
 _REL_TOLERANCE = 1e-4
@@ -35,9 +36,13 @@ def run_pipeline(pdf_path: Path) -> Dict[str, Any]:
         [sys.executable, "-m", "src.main", str(pdf_path), "--optimize"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         raise RuntimeError(f"Pipeline failed: {result.stderr}")
+    if not result.stdout:
+        raise RuntimeError(f"Pipeline produced no output: {result.stderr[:500]}")
     return json.loads(result.stdout)
 
 

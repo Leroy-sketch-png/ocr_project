@@ -390,6 +390,267 @@ def _apply_zero_nca_inference(
     )
 
 
+def _apply_tle_inference(
+    fields: Dict[str, FieldValue],
+    table_rows: Optional[List[TableRow]] = None,
+) -> None:
+    """
+    Derive Total Liabilities from Total Liabilities and Equity minus Total Equity.
+    Handles US GAAP balance sheets where TL is not explicitly printed
+    (e.g., KO: "Total Liabilities and Equity" row exists, but TL is only implied).
+    """
+    tle = fields.get("Total Liabilities and Equity")
+    te = fields.get("Total Equity")
+    tl = fields.get("Total Liabilities")
+    if not (
+        tle is not None and tle.value is not None
+        and te is not None and te.value is not None
+        and (tl is None or tl.value is None)
+    ):
+        return
+
+    inferred_tl = tle.value - te.value
+    if inferred_tl < 0:
+        return
+
+    raw_text = str(int(inferred_tl))
+    page = tle.page
+    tokens = tle.tokens
+    bbox = tle.bbox
+    if table_rows is not None:
+        for row in table_rows:
+            for ci, cell_text in enumerate(row.cells):
+                try:
+                    cv = float(cell_text.replace(",", "").replace("(", "").replace(")", "").replace(" ", ""))
+                    if abs(cv - inferred_tl) < 0.5:
+                        raw_text = cell_text
+                        page = row.page
+                        if ci < len(row.cell_tokens) and row.cell_tokens[ci]:
+                            tokens = row.cell_tokens[ci]
+                            xs = [t.bbox[0] for t in tokens]
+                            ys = [t.bbox[1] for t in tokens]
+                            xe = [t.bbox[2] for t in tokens]
+                            ye = [t.bbox[3] for t in tokens]
+                            bbox = (min(xs), min(ys), max(xe), max(ye))
+                        break
+                except (ValueError, AttributeError):
+                    continue
+
+    logger.debug("[TLE-INFER] TL = TLE - TE = %s - %s = %s", tle.value, te.value, inferred_tl)
+    new_tl = FieldValue(
+        name="Total Liabilities",
+        value=inferred_tl,
+        raw_text=raw_text,
+        page=page,
+        tokens=tokens,
+        bbox=bbox,
+        valid=True,
+        reason="tle_inference",
+        confidence=CONFIDENCE_INFERRED,
+    )
+    # Also compute multi_year for TL if both TLE and TE have year data
+    if tle.multi_year and te.multi_year:
+        from copy import deepcopy
+        yr_map = {}
+        common_yrs = set(tle.multi_year.keys()) & set(te.multi_year.keys())
+        for yr in sorted(common_yrs):
+            if yr is None:
+                continue
+            tle_yr = tle.multi_year[yr].value if tle.multi_year[yr] else None
+            te_yr = te.multi_year[yr].value if te.multi_year[yr] else None
+            if tle_yr is not None and te_yr is not None:
+                yr_fv = deepcopy(new_tl)
+                yr_fv.value = tle_yr - te_yr
+                yr_fv.year = yr
+                yr_fv.multi_year = None
+                yr_fv.raw_text = None
+                yr_fv.tokens = []
+                yr_fv.bbox = None
+                yr_map[yr] = yr_fv
+        if yr_map:
+            new_tl.multi_year = yr_map
+    fields["Total Liabilities"] = new_tl
+
+
+def _apply_ncl_from_tl_cl(
+    fields: Dict[str, FieldValue],
+    table_rows: Optional[List[TableRow]] = None,
+) -> None:
+    """
+    Derive Non-Current Liabilities from TL - CL when NCL is wrong or missing.
+    Handles balance sheets where NCL is not explicitly labeled as a total
+    (e.g., KO: NCL = sum of 3 component rows, but only "Long-term debt" matches).
+    """
+    tl = fields.get("Total Liabilities")
+    cl = fields.get("Current Liabilities")
+    ncl = fields.get("Non-Current Liabilities")
+    if not (
+        tl is not None and tl.value is not None
+        and cl is not None and cl.value is not None
+    ):
+        return
+
+    inferred_ncl = tl.value - cl.value
+    if inferred_ncl < 0:
+        return
+
+    # If NCL is missing (None or value=None) and TL ≈ CL, NCL is legitimately
+    # absent — don't force NCL = 0 (that would be a false positive).
+    ncl_missing = (ncl is None) or (ncl.value is None)
+    if ncl_missing and abs(inferred_ncl) < 0.5:
+        return
+
+    # Only override NCL if existing value is wrong or missing
+    if ncl is not None and ncl.value is not None:
+        if abs(ncl.value - inferred_ncl) < 0.5:
+            return  # already correct — skip
+
+    raw_text = str(int(inferred_ncl))
+    page = tl.page
+    tokens = tl.tokens
+    bbox = tl.bbox
+    if table_rows is not None:
+        for row in table_rows:
+            for ci, cell_text in enumerate(row.cells):
+                try:
+                    cv = float(cell_text.replace(",", "").replace("(", "").replace(")", "").replace(" ", ""))
+                    if abs(cv - inferred_ncl) < 0.5:
+                        raw_text = cell_text
+                        page = row.page
+                        if ci < len(row.cell_tokens) and row.cell_tokens[ci]:
+                            tokens = row.cell_tokens[ci]
+                            xs = [t.bbox[0] for t in tokens]
+                            ys = [t.bbox[1] for t in tokens]
+                            xe = [t.bbox[2] for t in tokens]
+                            ye = [t.bbox[3] for t in tokens]
+                            bbox = (min(xs), min(ys), max(xe), max(ye))
+                        break
+                except (ValueError, AttributeError):
+                    continue
+
+    logger.debug("[NCL-INFER] NCL = TL - CL = %s - %s = %s", tl.value, cl.value, inferred_ncl)
+    new_ncl = FieldValue(
+        name="Non-Current Liabilities",
+        value=inferred_ncl,
+        raw_text=raw_text,
+        page=page,
+        tokens=tokens,
+        bbox=bbox,
+        valid=True,
+        reason="ncl_from_tl_cl",
+        confidence=CONFIDENCE_INFERRED,
+    )
+    # Also compute multi_year for NCL if both TL and CL have year data
+    if tl.multi_year and cl.multi_year:
+        from copy import deepcopy
+        yr_map = {}
+        common_yrs = set(tl.multi_year.keys()) & set(cl.multi_year.keys())
+        for yr in sorted(common_yrs):
+            if yr is None:
+                continue
+            tl_yr = tl.multi_year[yr].value if tl.multi_year[yr] else None
+            cl_yr = cl.multi_year[yr].value if cl.multi_year[yr] else None
+            if tl_yr is not None and cl_yr is not None:
+                yr_fv = deepcopy(new_ncl)
+                yr_fv.value = tl_yr - cl_yr
+                yr_fv.year = yr
+                yr_fv.multi_year = None
+                yr_fv.raw_text = None
+                yr_fv.tokens = []
+                yr_fv.bbox = None
+                yr_map[yr] = yr_fv
+        if yr_map:
+            new_ncl.multi_year = yr_map
+    fields["Non-Current Liabilities"] = new_ncl
+
+
+def _apply_nca_from_ta_ca(
+    fields: Dict[str, FieldValue],
+    table_rows: Optional[List[TableRow]] = None,
+) -> None:
+    """
+    Derive Non-Current Assets from Total Assets minus Current Assets.
+    Handles balance sheets where NCA is not explicitly labeled as a total
+    (e.g., KO: NCA matches "Other noncurrent assets" instead of the correct
+    total = TA - CA).
+    """
+    ta = fields.get("Total Assets")
+    ca = fields.get("Current Assets")
+    nca = fields.get("Non-Current Assets")
+    if not (
+        ta is not None and ta.value is not None
+        and ca is not None and ca.value is not None
+    ):
+        return
+
+    inferred_nca = ta.value - ca.value
+    if inferred_nca < 0:
+        return
+
+    # Only override NCA if existing value is wrong or missing
+    if nca is not None and nca.value is not None:
+        if abs(nca.value - inferred_nca) < 0.5:
+            return  # already correct — skip
+
+    raw_text = str(int(inferred_nca))
+    page = ta.page
+    tokens = ta.tokens
+    bbox = ta.bbox
+    if table_rows is not None:
+        for row in table_rows:
+            for ci, cell_text in enumerate(row.cells):
+                try:
+                    cv = float(cell_text.replace(",", "").replace("(", "").replace(")", "").replace(" ", ""))
+                    if abs(cv - inferred_nca) < 0.5:
+                        raw_text = cell_text
+                        page = row.page
+                        if ci < len(row.cell_tokens) and row.cell_tokens[ci]:
+                            tokens = row.cell_tokens[ci]
+                            xs = [t.bbox[0] for t in tokens]
+                            ys = [t.bbox[1] for t in tokens]
+                            xe = [t.bbox[2] for t in tokens]
+                            ye = [t.bbox[3] for t in tokens]
+                            bbox = (min(xs), min(ys), max(xe), max(ye))
+                        break
+                except (ValueError, AttributeError):
+                    continue
+
+    logger.debug("[NCA-INFER] NCA = TA - CA = %s - %s = %s", ta.value, ca.value, inferred_nca)
+    new_nca = FieldValue(
+        name="Non-Current Assets",
+        value=inferred_nca,
+        raw_text=raw_text,
+        page=page,
+        tokens=tokens,
+        bbox=bbox,
+        valid=True,
+        reason="nca_from_ta_ca",
+        confidence=CONFIDENCE_INFERRED,
+    )
+    # Also compute multi_year for NCA if both TA and CA have year data
+    if ta.multi_year and ca.multi_year:
+        from copy import deepcopy
+        yr_map = {}
+        common_yrs = set(ta.multi_year.keys()) & set(ca.multi_year.keys())
+        for yr in sorted(common_yrs):
+            if yr is None:
+                continue
+            ta_yr = ta.multi_year[yr].value if ta.multi_year[yr] else None
+            ca_yr = ca.multi_year[yr].value if ca.multi_year[yr] else None
+            if ta_yr is not None and ca_yr is not None:
+                yr_fv = deepcopy(new_nca)
+                yr_fv.value = ta_yr - ca_yr
+                yr_fv.year = yr
+                yr_fv.multi_year = None
+                yr_fv.raw_text = None
+                yr_fv.tokens = []
+                yr_fv.bbox = None
+                yr_map[yr] = yr_fv
+        if yr_map:
+            new_nca.multi_year = yr_map
+    fields["Non-Current Assets"] = new_nca
+
+
 def _check_liabilities_closure(fields: Dict[str, FieldValue]) -> None:
     """Post-repair sanity check: TL must equal CL + NCL.
 
@@ -467,6 +728,8 @@ def apply_math_repairs(
     _apply_zero_ncl_inference(repaired, table_rows=table_rows, flat_config=flat_config)
     _apply_cl_inference(repaired, table_rows=table_rows)
     _apply_zero_nca_inference(repaired, table_rows=table_rows, flat_config=flat_config)
+    _apply_tle_inference(repaired, table_rows=table_rows)
+    _apply_ncl_from_tl_cl(repaired, table_rows=table_rows)
 
     for target, summands in EQUATIONS:
         suspects = [target] + summands

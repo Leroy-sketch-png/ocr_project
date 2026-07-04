@@ -23,8 +23,6 @@ ProfitAndLoss:
       - "Operating result before tax"
   Net Profit/Loss:
     keywords:
-      - "Net Profit"
-      - "Net Loss"
       - "Profit for the Year"
       - "Net Profit/Loss"
       - "Annual result"
@@ -32,9 +30,6 @@ ProfitAndLoss:
       - "Net profit / (loss)"
       - "Net profit (loss)"
       - "Profit / (loss) for the year"
-      - "Total comprehensive income"
-      - "Total comprehensive profit"
-      - "Total comprehensive loss"
       - "Net income"
       - "total comprehensive income for the year"
   Operating Profit/Loss:
@@ -71,6 +66,7 @@ ProfitAndLoss:
       - "Tax expense"
       - "Provision for income taxes"
       - "Income tax provision"
+      - "Income taxes"
 
 Assets:
   _section: balance_sheet
@@ -79,6 +75,7 @@ Assets:
   Current Assets:
     keywords: ["Current Assets", "Total Current Assets", "Total current asset", "Total current assets"]
   Non-Current Assets:
+    _restricting_extra: ["other"]
     keywords: ["Non-Current Assets", "Noncurrent Assets", "Total fixed assets", "Total Non-Current Assets", "Total non-current asset"]
   Plant and Equipment:
     # IMPORTANT: 'Right-of-use assets' is a SEPARATE line item (IFRS 16 lease asset).
@@ -152,6 +149,8 @@ Liabilities:
       # The page_section_map guards against matching CL-section Borrowings rows.
   Total Liabilities:
     keywords: ["Total Liabilities", "Total ilities", "Total liabilities"]
+  Total Liabilities and Equity:
+    keywords: ["Total Liabilities and Equity", "Total liabilities and shareholders equity", "Total liabilities and stockholders equity", "Total liabilities and shareholders' equity", "Total liabilities and stockholders' equity"]
 
 Equity:
   _section: balance_sheet

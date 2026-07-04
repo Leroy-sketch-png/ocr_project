@@ -8,7 +8,7 @@ from .models import FieldValue, TableRow, TextBlock, Token
 from .value_parser import parse_numeric
 
 
-def compute_match_score(query: str, desc: str) -> float:
+def compute_match_score(query: str, desc: str, extra_restricting: set = None) -> float:
     """
     Score how well `desc` matches `query`.
 
@@ -46,11 +46,15 @@ def compute_match_score(query: str, desc: str) -> float:
     # (e.g., "current" in "Total current assets" ≠ "Total Assets").
     # "equity" and "liabilities" prevent "Total Liabilities" from matching
     # "Total liabilities and equity" (a different line).
+    # "loss" prevents "Other income (loss)" from matching "Net Loss" / "Net income".
     _RESTRICTING = {
         "current", "noncurrent", "fixed", "intangible",
         "shortterm", "longterm",
         "equity", "liabilities",
+        "loss",
     }
+    if extra_restricting:
+        _RESTRICTING = _RESTRICTING | extra_restricting
 
     if recall == 1.0:
         # All query tokens present in description — containment match.
@@ -320,8 +324,10 @@ def extract_fields(
                     continue  # confirmed section mismatch — skip
 
             kws = field_cfg.get("keywords", [])
+            extra_restr = field_cfg.get("_restricting_extra")
+            extra_restr_set = set(extra_restr) if isinstance(extra_restr, list) else None
             best_kw_score = max(
-                (compute_match_score(kw, desc_lower) for kw in kws), default=0.0
+                (compute_match_score(kw, desc_lower, extra_restricting=extra_restr_set) for kw in kws), default=0.0
             )
 
             if best_kw_score >= 82:
@@ -365,6 +371,14 @@ def extract_fields(
                 raw_text = row.cells[best_cell_idx] if (row.cells and best_cell_idx is not None) else None
                 val = parse_numeric(raw_text)
 
+                # Reject sectioned-field matches on unknown pages when no valid cell
+                # was found within the year-column radius (value would be None, and
+                # the match is almost certainly a prose word, not a financial data row).
+                if field_section and page_section_map:
+                    row_section = page_section_map.get(row.page, "unknown")
+                    if row_section == "unknown" and val is None:
+                        continue
+
                 field_cfg = flat_config.get(field_name, {})
                 if field_cfg.get("sign") == "negative" and val is not None and val > 0:
                     val = -val
@@ -374,43 +388,69 @@ def extract_fields(
                 current_best_score = best_scores[field_name]
                 should_update = False
 
-                if best_kw_score > current_best_score:
-                    existing_val = None
+                # Determine section-match status for new and existing candidates
+                current_row_section = page_section_map.get(row.page, "unknown") if page_section_map else "unknown"
+                new_section_matches = (field_section and current_row_section != "unknown" and current_row_section == field_section)
+
+                existing_section_matches = False
+                existing_val = None
+                existing_page = None
+                if field_name in results and results[field_name] is not None:
+                    existing_val = parse_numeric(results[field_name].raw_text)
+                    existing_page = results[field_name].page
+                    existing_row_section = page_section_map.get(existing_page, "unknown") if page_section_map else "unknown"
+                    existing_section_matches = (field_section and existing_row_section != "unknown" and existing_row_section == field_section)
+
+                # Apply section bonus to effective score
+                NEW_SECTION_BONUS = 10
+                new_effective = best_kw_score + (NEW_SECTION_BONUS if new_section_matches else 0)
+                existing_effective = current_best_score + (NEW_SECTION_BONUS if existing_section_matches else 0)
+
+                if (
+                    val is not None
+                    and abs(val) < 1e-6
+                    and existing_val is not None
+                    and abs(existing_val) > 1e-6
+                ):
+                    # New candidate is zero but existing is non-zero:
+                    # add as candidate only, do not replace primary value.
                     if field_name in results and results[field_name] is not None:
-                        existing_val = parse_numeric(results[field_name].raw_text)
-                    if (
-                        val is not None
-                        and abs(val) < 1e-6
-                        and existing_val is not None
-                        and abs(existing_val) > 1e-6
-                    ):
-                        # New candidate is zero but existing is non-zero:
-                        # add as candidate only, do not replace primary value.
-                        if field_name in results and results[field_name] is not None:
-                            results[field_name].row_candidates.append((raw_text, val))
-                        should_update = False
-                    else:
+                        results[field_name].row_candidates.append((raw_text, val))
+                    should_update = False
+                elif new_effective > existing_effective:
+                    should_update = True
+                elif new_effective == existing_effective:
+                    should_update = False
+                    if val is not None and existing_val is not None:
+                        # Tiebreaker: prefer section-matched; then earlier page; then larger value
+                        if new_section_matches and not existing_section_matches:
+                            should_update = True
+                        elif existing_section_matches and not new_section_matches:
+                            should_update = False
+                        elif row.page < existing_page:
+                            should_update = True
+                        elif row.page == existing_page:
+                            should_update = False
+                        elif abs(val) > abs(existing_val) * 10:
+                            should_update = True
+                    elif val is not None and existing_val is None:
                         should_update = True
-                elif best_kw_score == current_best_score:
-                    if val is not None:
-                        if field_name in results:
-                            existing_val = parse_numeric(results[field_name].raw_text)
-                            existing_page = results[field_name].page
-                            if existing_val is not None:
-                                # Prioritize earlier pages (Group) over later pages (Company)
-                                if row.page < existing_page:
-                                    should_update = True
-                                elif row.page == existing_page:
-                                    # Keep first match on same page — avoids overwriting
-                                    # the correct NCL Borrowings with a CL sub-item.
-                                    should_update = False
-                                elif abs(val) > abs(existing_val) * 10:
-                                    # Overwrite tiny text mentions with large table values
-                                    should_update = True
-                            else:
-                                should_update = True
+                    elif existing_val is not None and val is None:
+                        should_update = False
 
                     if field_name in results and not should_update:
+                        for cell_text in row.cells:
+                            cval = parse_numeric(cell_text)
+                            if cval is not None:
+                                field_cfg = flat_config.get(field_name, {})
+                                if field_cfg.get("sign") == "negative" and cval > 0:
+                                    cval = -cval
+                                    if cell_text and not cell_text.startswith("-") and "(" not in cell_text:
+                                        cell_text = "-" + cell_text
+                                results[field_name].row_candidates.append((cell_text, cval))
+                else:
+                    # Score worse — collect as candidate for multi-year inference
+                    if field_name in results:
                         for cell_text in row.cells:
                             cval = parse_numeric(cell_text)
                             if cval is not None:
@@ -637,5 +677,23 @@ def extract_fields(
     for field_name, yr_map in multi_year_results.items():
         if field_name in results and results[field_name] is not None:
             results[field_name].multi_year = yr_map
+
+    # Seed inferred fields that had no primary match so the accounting equation
+    # in main.py can still compute them via multi-year propagation.
+    from .models import FieldValue as _FieldValue
+    for field_name, field_cfg in flat_config.items():
+        if field_name not in results and field_cfg.get("inferred"):
+            results[field_name] = _FieldValue(
+                name=field_name,
+                value=None,
+                raw_text=None,
+                page=None,
+                tokens=[],
+                bbox=None,
+                valid=False,
+                reason="Inferred field — no primary OCR match",
+                row_candidates=[],
+                field_label=field_name,
+            )
 
     return results

@@ -9,6 +9,9 @@ SECTION_MARKERS = {
         "income statement", "profit and loss", "profit or loss",
         "statement of profit", "statement of comprehensive income",
         "consolidated statement of profit",
+        "statements of income", "consolidated statements of income",
+        "statement of operations", "statements of operations",
+        "statement of earnings",
     ],
     "balance_sheet": [
         "balance sheet", "statement of financial position",
