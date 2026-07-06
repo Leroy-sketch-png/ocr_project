@@ -23,6 +23,10 @@ SECTION_MARKERS = {
     "changes_in_equity": [
         "changes in equity", "statement of changes",
         "movements in equity",
+        # Apple uses "CONSOLIDATED STATEMENTS OF SHAREHOLDERS' EQUITY"
+        # (U+2019 right single quotation mark in the PDF)
+        "statement of shareholders",
+        "statements of shareholders",
     ],
     "notes": [
         # IMPORTANT: Do NOT add bare single words like 'notes' here.
@@ -34,6 +38,9 @@ SECTION_MARKERS = {
         "notes to the consolidated",
         "notes to financial statements",
         "notes to the financial statements",
+        # Without 'the' — covers "NOTES TO CONSOLIDATED FINANCIAL STATEMENTS"
+        # (Apple, KO) where no article precedes "consolidated".
+        "notes to consolidated",
     ],
 }
 
@@ -303,4 +310,32 @@ def build_table_rows(text_blocks: List[TextBlock], dpi_scale: float = 1.0) -> Li
                 )
             )
 
-    return rows
+    # Post-processing: merge continuation rows whose description starts with a
+    # lowercase letter — those are line-wrapped continuations of the prior row
+    # (e.g. "Common stock … par value: shares" + "authorized; … respectively").
+    # Guard: only merge if the prior description ends with a colon, which is a
+    # strong signal that the line wrapped mid-sentence (e.g. "par value: shares"
+    # → "authorized; …"). This prevents merging unrelated OCR rows that happen
+    # to start with a lowercase word.
+    merged = []
+    for row in rows:
+        if (
+            merged
+            and row.description
+            and row.description[0].islower()
+            and row.page == merged[-1].page
+            and ":" in merged[-1].description
+        ):
+            prev = merged[-1]
+            prev.description += " " + row.description
+            for j, cell in enumerate(row.cells):
+                if cell:
+                    if prev.cells[j]:
+                        prev.cells[j] += " " + cell
+                        prev.cell_tokens[j].extend(row.cell_tokens[j])
+                    else:
+                        prev.cells[j] = cell
+                        prev.cell_tokens[j] = list(row.cell_tokens[j])
+        else:
+            merged.append(row)
+    return merged
