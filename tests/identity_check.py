@@ -9,6 +9,8 @@ SAMPLES = {
     "S1": str(PROJECT_DIR / "data" / "samples" / "AA_SAMPLE1.pdf"),
     "S2": str(PROJECT_DIR / "data" / "samples" / "AA_SAMPLE2.pdf"),
     "S3": str(PROJECT_DIR / "data" / "samples" / "AA_SAMPLE3.pdf"),
+    "KO": str(PROJECT_DIR / "data" / "real_10ks" / "ko_10k.pdf"),
+    "AAPL": str(PROJECT_DIR / "data" / "real_10ks" / "aapl_10k.pdf"),
 }
 
 IDENTITIES = [

@@ -430,7 +430,9 @@ def extract_fields(
                         elif row.page < existing_page:
                             should_update = True
                         elif row.page == existing_page:
-                            should_update = False
+                            # When scores are tied on the same page, prefer
+                            # aggregate "total" rows over component rows.
+                            should_update = "total" in desc_lower
                         elif abs(val) > abs(existing_val) * 10:
                             should_update = True
                     elif val is not None and existing_val is None:

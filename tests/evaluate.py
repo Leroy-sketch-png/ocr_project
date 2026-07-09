@@ -20,6 +20,7 @@ SAMPLES = {
     "SAMPLE2": Path("data/samples/AA_SAMPLE2.pdf"),
     "SAMPLE3": Path("data/samples/AA_SAMPLE3.pdf"),
     "KO": Path("data/real_10ks/ko_10k.pdf"),
+    "AAPL": Path("data/real_10ks/aapl_10k.pdf"),
 }
 _ABS_TOLERANCE = 1.0
 _REL_TOLERANCE = 1e-4

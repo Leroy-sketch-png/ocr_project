@@ -500,10 +500,14 @@ def _apply_ncl_from_tl_cl(
     if ncl_missing and abs(inferred_ncl) < 0.5:
         return
 
-    # Only override NCL if existing value is wrong or missing
-    if ncl is not None and ncl.value is not None:
-        if abs(ncl.value - inferred_ncl) < 0.5:
-            return  # already correct — skip
+    # Only override NCL if existing value is wrong or missing.
+    # ncl.value may be None at this point (parsed later by repair engine)
+    # so also check raw_text which IS set by the keyword match in extract_fields.
+    ncl_val = ncl.value if (ncl is not None and ncl.value is not None) else None
+    if ncl_val is None and ncl is not None and ncl.raw_text is not None:
+        ncl_val = parse_numeric(ncl.raw_text)
+    if ncl_val is not None and abs(ncl_val - inferred_ncl) < 0.5:
+        return  # already correct — skip
 
     raw_text = str(int(inferred_ncl))
     page = tl.page
